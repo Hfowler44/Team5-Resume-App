@@ -4,7 +4,7 @@ Team 5
 
 | Team Members  | Role | Github |
 | ------------- |:-------------:| :-------------:|
-| Hayden Fowler      | PM / Front End     | @Hfowler44 |
+| Hayden Fowler      | PM / Mobile     | @Hfowler44 |
 | Stephen Olenchak      | Front End     | @stephenolenchak |
 | Sharath Kukeswaran      | Database     | @sharathkukeswaran-spec |
 | Lincoln Spencer      | API Developer     | @sl2005 |

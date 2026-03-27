@@ -254,7 +254,7 @@ function AuthScreen({
                   onChange={(event) =>
                     updateAuthField("register", "fullName", event.target.value)
                   }
-                  placeholder="Citronaut Candidate"
+                  placeholder="Name"
                   required
                 />
               </label>

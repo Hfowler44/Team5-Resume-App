@@ -18,7 +18,10 @@ router.post("/", auth, upload.single("resume"), async (req, res, next) => {
     const resume = await Resume.create({
       userId: req.userId,
       fileName: req.file.originalname,
-      fileUrl: "memory://uploaded", // placeholder until cloud storage is added
+      fileUrl: "/api/resumes/pending/file",
+      pdfData: req.file.buffer,
+      pdfMimeType: req.file.mimetype,
+      pdfSize: req.file.size,
       textExtracted,
       parsed: {
         skills: [],
@@ -28,6 +31,9 @@ router.post("/", auth, upload.single("resume"), async (req, res, next) => {
       },
       status: "uploaded",
     });
+
+    resume.fileUrl = `/api/resumes/${resume._id}/file`;
+    await resume.save();
 
     // Create initial version
     await ResumeVersion.create({
@@ -66,6 +72,30 @@ router.get("/:id", auth, async (req, res, next) => {
     });
     if (!resume) return res.status(404).json({ error: "Resume not found" });
     res.json(resume);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/resumes/:id/file
+router.get("/:id/file", auth, async (req, res, next) => {
+  try {
+    const resume = await Resume.findOne({
+      _id: req.params.id,
+      userId: req.userId,
+    }).select("+pdfData +pdfMimeType");
+
+    if (!resume) return res.status(404).json({ error: "Resume not found" });
+    if (!resume.pdfData) {
+      return res.status(404).json({ error: "Stored PDF not available" });
+    }
+
+    res.setHeader("Content-Type", resume.pdfMimeType || "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(resume.fileName)}"`
+    );
+    res.send(resume.pdfData);
   } catch (err) {
     next(err);
   }

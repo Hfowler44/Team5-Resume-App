@@ -12,7 +12,7 @@ Team 5
 
 ## Docker deployment
 
-This repo now includes a `docker-compose.yml` for the API and MongoDB.
+This repo now includes a `docker-compose.yml` for the React frontend, API, and MongoDB.
 
 1. Copy the compose environment template:
    ```bash
@@ -24,12 +24,17 @@ This repo now includes a `docker-compose.yml` for the API and MongoDB.
    ```bash
    docker compose up --build -d
    ```
-4. Check the API health endpoint:
+4. Open the app at:
+   ```bash
+   http://localhost:3000
+   ```
+5. Check the API health endpoint if needed:
    ```bash
    curl http://localhost:5000/api/health
    ```
 
 By default:
+- The React frontend is exposed on port `3000`
 - The API is exposed on port `5000`
 - MongoDB is available to the API on the internal Docker network
 - Mongo data is stored in the named Docker volume `mongo_data`

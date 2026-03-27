@@ -29,6 +29,7 @@ The compose stack injects these API settings:
 - `GEMINI_MODEL` from the repo root `.env` (defaults to `gemini-2.5-flash`)
 
 The API will be available at `http://localhost:5000`.
+The Dockerized React frontend proxies API requests from `http://localhost:3000`.
 
 ## Environment variables
 
@@ -52,6 +53,7 @@ The API will be available at `http://localhost:5000`.
 | POST | `/api/resumes` | JWT | Upload PDF |
 | GET | `/api/resumes` | JWT | List resumes |
 | GET | `/api/resumes/:id` | JWT | Get resume |
+| GET | `/api/resumes/:id/file` | JWT | Stream stored PDF |
 | DELETE | `/api/resumes/:id` | JWT | Delete resume |
 | GET | `/api/resumes/:id/versions` | JWT | List versions |
 | GET | `/api/resumes/:id/versions/:num` | JWT | Get version |

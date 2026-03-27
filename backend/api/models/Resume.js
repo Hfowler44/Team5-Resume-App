@@ -28,6 +28,9 @@ const resumeSchema = new mongoose.Schema(
     },
     fileName: { type: String, required: true },
     fileUrl: { type: String, required: true },
+    pdfData: { type: Buffer, required: true, select: false },
+    pdfMimeType: { type: String, required: true, select: false },
+    pdfSize: { type: Number, required: true },
     textExtracted: { type: String, required: true },
     parsed: { type: parsedSchema, required: true },
     status: {

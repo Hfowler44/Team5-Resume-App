@@ -204,7 +204,7 @@ function AuthScreen({
           <div className="brand-lockup auth-lockup">
             <img src={knightMark} alt="Knight My Resume crest" className="brand-mark" />
             <div>
-              <p className="eyebrow">UCF-inspired resume review desk</p>
+              <p className="eyebrow">AI-Assited Resume Review</p>
               <h1>Knight My Resume</h1>
             </div>
           </div>

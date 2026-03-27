@@ -5,11 +5,29 @@ Express + Mongoose API for the AI Resume App.
 ## Setup
 
 ```bash
+cp .env.example .env   # from the repository root
 cd backend/api
-cp .env.example .env   # then fill in your real values
 npm install
 npm start              # or: npm run dev (auto-reload)
 ```
+
+## Docker
+
+From the repository root:
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+The compose stack injects these API settings:
+
+- `PORT=5000`
+- `MONGODB_URI=mongodb://mongo:27017/<MONGO_DB>`
+- `JWT_SECRET` from the repo root `.env`
+- `GEMINI_API_KEY` from the repo root `.env`
+
+The API will be available at `http://localhost:5000`.
 
 ## Environment variables
 

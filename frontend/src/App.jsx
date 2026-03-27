@@ -291,8 +291,8 @@ function AuthScreen({
               {authLoading
                 ? "Please wait..."
                 : authMode === "register"
-                  ? "Create workspace"
-                  : "Open dashboard"}
+                  ? "Create account"
+                  : "Login"}
             </button>
           </form>
         </div>

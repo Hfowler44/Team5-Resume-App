@@ -1,6 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 const RUBRIC_PROMPT = `You are a professional resume reviewer. Analyze the following resume text and return a JSON object with this exact structure:
 
@@ -28,7 +29,7 @@ Provide 3-8 suggestions covering different categories. The overallScore should b
 
 const analyzeResume = async (resumeText) => {
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: GEMINI_MODEL,
     generationConfig: {
       temperature: 0.3,
       responseMimeType: "application/json",
@@ -84,4 +85,4 @@ const analyzeResume = async (resumeText) => {
   };
 };
 
-module.exports = { analyzeResume };
+module.exports = { analyzeResume, GEMINI_MODEL };

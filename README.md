@@ -19,6 +19,7 @@ This repo now includes a `docker-compose.yml` for the API and MongoDB.
    cp .env.example .env
    ```
 2. Update `JWT_SECRET` and, if you want AI analysis enabled, set `GEMINI_API_KEY`.
+   The default Flash model is `gemini-2.5-flash`, and you can override it with `GEMINI_MODEL`.
 3. Build and start the stack:
    ```bash
    docker compose up --build -d

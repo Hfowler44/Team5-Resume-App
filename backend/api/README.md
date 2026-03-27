@@ -26,6 +26,7 @@ The compose stack injects these API settings:
 - `MONGODB_URI=mongodb://mongo:27017/<MONGO_DB>`
 - `JWT_SECRET` from the repo root `.env`
 - `GEMINI_API_KEY` from the repo root `.env`
+- `GEMINI_MODEL` from the repo root `.env` (defaults to `gemini-2.5-flash`)
 
 The API will be available at `http://localhost:5000`.
 
@@ -37,6 +38,7 @@ The API will be available at `http://localhost:5000`.
 | `MONGODB_URI` | MongoDB connection string |
 | `JWT_SECRET` | Secret for signing JWTs |
 | `GEMINI_API_KEY` | Google Gemini API key |
+| `GEMINI_MODEL` | Gemini model name for resume analysis (default `gemini-2.5-flash`) |
 
 ## Endpoints
 

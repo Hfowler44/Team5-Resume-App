@@ -35,6 +35,8 @@ const resumeSuggestionSchema = new mongoose.Schema(
       ref: "ResumeVersion",
     },
     overallScore: { type: Number, required: true, min: 0, max: 100 },
+    detectedField: { type: String, default: "Software Engineering" },
+    roleMatches: [{ type: String }],
     analysisStatus: {
       type: String,
       enum: ["queued", "running", "completed", "failed"],
@@ -42,6 +44,7 @@ const resumeSuggestionSchema = new mongoose.Schema(
     },
     suggestions: [suggestionItemSchema],
     modelUsed: { type: String, required: true },
+    contentHash: { type: String, index: true },
   },
   { timestamps: true }
 );
@@ -49,5 +52,9 @@ const resumeSuggestionSchema = new mongoose.Schema(
 resumeSuggestionSchema.index({ resumeId: 1, createdAt: -1 });
 resumeSuggestionSchema.index({ userId: 1, createdAt: -1 });
 resumeSuggestionSchema.index({ analysisStatus: 1, updatedAt: -1 });
+resumeSuggestionSchema.index(
+  { userId: 1, contentHash: 1, analysisStatus: 1 },
+  { name: "dedup_content_analysis" }
+);
 
 module.exports = mongoose.model("ResumeSuggestion", resumeSuggestionSchema);

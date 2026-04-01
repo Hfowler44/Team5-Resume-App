@@ -7,6 +7,10 @@ const Resume = require("../models/Resume");
 let mongo;
 
 beforeAll(async () => {
+  // Disconnect from any existing connection (e.g., from dotenv loading MONGODB_URI)
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
   mongo = await MongoMemoryServer.create();
   await mongoose.connect(mongo.getUri());
 });

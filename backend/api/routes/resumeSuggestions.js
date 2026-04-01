@@ -1,8 +1,14 @@
 const router = require("express").Router();
 const auth = require("../middleware/auth");
 const Resume = require("../models/Resume");
+const ResumeVersion = require("../models/ResumeVersion");
 const ResumeSuggestion = require("../models/ResumeSuggestion");
 const { analyzeResume, GEMINI_MODEL } = require("../services/geminiAnalyzer");
+
+const crypto = require("crypto");
+
+const hashText = (text) =>
+  crypto.createHash("sha256").update(text).digest("hex");
 
 // POST /api/resumes/:resumeId/analyze — trigger AI analysis
 router.post("/:resumeId/analyze", auth, async (req, res, next) => {
@@ -13,10 +19,50 @@ router.post("/:resumeId/analyze", auth, async (req, res, next) => {
     });
     if (!resume) return res.status(404).json({ error: "Resume not found" });
 
+    // Find the latest version for this resume
+    const latestVersion = await ResumeVersion.findOne({
+      resumeId: resume._id,
+    }).sort({ versionNumber: -1 });
+
+    const contentHash = hashText(resume.textExtracted);
+
+    // Return existing analysis if the same resume text was already analyzed
+    const existing = await ResumeSuggestion.findOne({
+      userId: req.userId,
+      contentHash,
+      analysisStatus: "completed",
+    });
+
+    if (existing) {
+      // Update links in case it was from a different upload
+      let changed = false;
+      if (!existing.resumeId.equals(resume._id)) {
+        existing.resumeId = resume._id;
+        changed = true;
+      }
+      if (latestVersion && !existing.resumeVersionId?.equals(latestVersion._id)) {
+        existing.resumeVersionId = latestVersion._id;
+        changed = true;
+      }
+      if (changed) await existing.save();
+
+      resume.status = "analyzed";
+      await resume.save();
+
+      // Update improvement score on the version
+      if (latestVersion) {
+        await updateImprovementScore(resume._id, latestVersion, existing.overallScore);
+      }
+
+      return res.status(200).json(existing);
+    }
+
     // Create a queued suggestion record
     const suggestion = await ResumeSuggestion.create({
       resumeId: resume._id,
       userId: req.userId,
+      resumeVersionId: latestVersion?._id,
+      contentHash,
       overallScore: 0,
       analysisStatus: "running",
       suggestions: [],
@@ -27,6 +73,8 @@ router.post("/:resumeId/analyze", auth, async (req, res, next) => {
       const analysis = await analyzeResume(resume.textExtracted);
 
       suggestion.overallScore = analysis.overallScore;
+      suggestion.detectedField = analysis.detectedField;
+      suggestion.roleMatches = analysis.roleMatches;
       suggestion.suggestions = analysis.suggestions;
       suggestion.analysisStatus = "completed";
       await suggestion.save();
@@ -34,6 +82,11 @@ router.post("/:resumeId/analyze", auth, async (req, res, next) => {
       // Update resume status
       resume.status = "analyzed";
       await resume.save();
+
+      // Update improvement score on the version
+      if (latestVersion) {
+        await updateImprovementScore(resume._id, latestVersion, analysis.overallScore);
+      }
     } catch (aiErr) {
       suggestion.analysisStatus = "failed";
       await suggestion.save();
@@ -45,6 +98,37 @@ router.post("/:resumeId/analyze", auth, async (req, res, next) => {
     next(err);
   }
 });
+
+// Compute improvement score: difference from the previous version's analysis
+async function updateImprovementScore(resumeId, currentVersion, currentScore) {
+  if (currentVersion.versionNumber <= 1) {
+    currentVersion.improvementScore = currentScore;
+    await currentVersion.save();
+    return;
+  }
+
+  const prevVersion = await ResumeVersion.findOne({
+    resumeId,
+    versionNumber: currentVersion.versionNumber - 1,
+  });
+
+  if (!prevVersion) {
+    currentVersion.improvementScore = currentScore;
+    await currentVersion.save();
+    return;
+  }
+
+  // Find the analysis linked to the previous version
+  const prevAnalysis = await ResumeSuggestion.findOne({
+    resumeId,
+    resumeVersionId: prevVersion._id,
+    analysisStatus: "completed",
+  });
+
+  const prevScore = prevAnalysis ? prevAnalysis.overallScore : 0;
+  currentVersion.improvementScore = Math.max(0, Math.min(100, currentScore - prevScore));
+  await currentVersion.save();
+}
 
 // GET /api/resumes/:resumeId/suggestions — list analyses
 router.get("/:resumeId/suggestions", auth, async (req, res, next) => {

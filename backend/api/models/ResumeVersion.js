@@ -15,6 +15,8 @@ const resumeVersionSchema = new mongoose.Schema({
   textExtracted: { type: String, required: true },
   changeSummary: { type: String, required: true },
   improvementScore: { type: Number, required: true, min: 0, max: 100 },
+  pdfData: { type: Buffer, required: true, select: false },
+  pdfMimeType: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
 });
 

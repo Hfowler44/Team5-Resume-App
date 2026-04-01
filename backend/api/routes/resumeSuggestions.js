@@ -57,40 +57,28 @@ router.post("/:resumeId/analyze", auth, async (req, res, next) => {
       return res.status(200).json(existing);
     }
 
-    // Create a queued suggestion record
+    const analysis = await analyzeResume(resume.textExtracted);
+
     const suggestion = await ResumeSuggestion.create({
       resumeId: resume._id,
       userId: req.userId,
       resumeVersionId: latestVersion?._id,
       contentHash,
-      overallScore: 0,
-      analysisStatus: "running",
-      suggestions: [],
+      overallScore: analysis.overallScore,
+      detectedField: analysis.detectedField,
+      roleMatches: analysis.roleMatches,
+      analysisStatus: "completed",
+      suggestions: analysis.suggestions,
       modelUsed: GEMINI_MODEL,
     });
 
-    try {
-      const analysis = await analyzeResume(resume.textExtracted);
+    // Update resume status
+    resume.status = "analyzed";
+    await resume.save();
 
-      suggestion.overallScore = analysis.overallScore;
-      suggestion.detectedField = analysis.detectedField;
-      suggestion.roleMatches = analysis.roleMatches;
-      suggestion.suggestions = analysis.suggestions;
-      suggestion.analysisStatus = "completed";
-      await suggestion.save();
-
-      // Update resume status
-      resume.status = "analyzed";
-      await resume.save();
-
-      // Update improvement score on the version
-      if (latestVersion) {
-        await updateImprovementScore(resume._id, latestVersion, analysis.overallScore);
-      }
-    } catch (aiErr) {
-      suggestion.analysisStatus = "failed";
-      await suggestion.save();
-      throw aiErr;
+    // Update improvement score on the version
+    if (latestVersion) {
+      await updateImprovementScore(resume._id, latestVersion, analysis.overallScore);
     }
 
     res.status(201).json(suggestion);
@@ -141,6 +129,7 @@ router.get("/:resumeId/suggestions", auth, async (req, res, next) => {
 
     const suggestions = await ResumeSuggestion.find({
       resumeId: resume._id,
+      analysisStatus: "completed",
     }).sort({ createdAt: -1 });
 
     res.json(suggestions);

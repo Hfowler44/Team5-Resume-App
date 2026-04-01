@@ -248,7 +248,7 @@ function AuthScreen({
           <form className="auth-form" onSubmit={onSubmit}>
             {authMode === "register" ? (
               <label className="field">
-                <span>Full name</span>
+                <span>Full name<span className="required-star">*</span></span>
                 <input
                   value={authForms.register.fullName}
                   onChange={(event) =>
@@ -261,7 +261,7 @@ function AuthScreen({
             ) : null}
 
             <label className="field">
-              <span>Email</span>
+              <span>Email<span className="required-star">*</span></span>
               <input
                 type="email"
                 value={authForms[authMode].email}
@@ -272,7 +272,7 @@ function AuthScreen({
             </label>
 
             <label className="field">
-              <span>Password</span>
+              <span>Password<span className="required-star">*</span></span>
               <input
                 type="password"
                 value={authForms[authMode].password}
@@ -307,6 +307,7 @@ function Dashboard({ session, onLogout }) {
   const [selectedResume, setSelectedResume] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [versions, setVersions] = useState([]);
+  const [activeVersionNumber, setActiveVersionNumber] = useState(null);
   const [analysisRecords, setAnalysisRecords] = useState([]);
   const [activeAnalysisId, setActiveAnalysisId] = useState(null);
   const [dashboardError, setDashboardError] = useState("");
@@ -317,6 +318,7 @@ function Dashboard({ session, onLogout }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [highlightResumeId, setHighlightResumeId] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [detailRefresh, setDetailRefresh] = useState(0);
   const fileInputRef = useRef(null);
   const previewRef = useRef("");
   const suggestionsRef = useRef(null);
@@ -382,6 +384,7 @@ function Dashboard({ session, onLogout }) {
       if (!selectedResumeId) {
         setSelectedResume(null);
         setVersions([]);
+        setActiveVersionNumber(null);
         setAnalysisRecords([]);
         setActiveAnalysisId(null);
         replacePreview("");
@@ -412,6 +415,8 @@ function Dashboard({ session, onLogout }) {
         if (!cancelled) {
           setSelectedResume(resume);
           setVersions(versionList);
+          const latestVersion = versionList[0]?.versionNumber || null;
+          setActiveVersionNumber(latestVersion);
           setAnalysisRecords(suggestionList);
           setActiveAnalysisId((current) => {
             if (current && suggestionList.some((record) => record._id === current)) {
@@ -421,7 +426,7 @@ function Dashboard({ session, onLogout }) {
             return suggestionList[0]?._id || null;
           });
           replacePreview(pdfPreview);
-        } else if (pdfPreview) {
+        }else if (pdfPreview) {
           URL.revokeObjectURL(pdfPreview);
         }
       } catch (error) {
@@ -440,7 +445,7 @@ function Dashboard({ session, onLogout }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedResumeId, token]);
+  }, [selectedResumeId, detailRefresh, token]);
 
   const activeAnalysis = useMemo(
     () =>
@@ -462,6 +467,54 @@ function Dashboard({ session, onLogout }) {
       },
     ];
   }, [activeAnalysis, resumes]);
+
+  const handleVersionClick = async (versionNumber) => {
+    if (!selectedResumeId || versionNumber === activeVersionNumber) return;
+
+    setActiveVersionNumber(versionNumber);
+
+    // Switch to the analysis linked to this version
+    const version = versions.find((v) => v.versionNumber === versionNumber);
+    if (version) {
+      const matchingAnalysis = analysisRecords.find(
+        (r) => r.resumeVersionId === version._id
+      );
+      if (matchingAnalysis) {
+        setActiveAnalysisId(matchingAnalysis._id);
+      }
+    }
+
+    try {
+      const fileBlob = await api.getVersionFile(token, selectedResumeId, versionNumber);
+      replacePreview(URL.createObjectURL(fileBlob));
+    } catch (error) {
+      if (!handleAuthFailure(error)) {
+        setDashboardError("Could not load PDF for that version.");
+      }
+    }
+  };
+
+  const handleAnalysisClick = async (record) => {
+    if (record._id === activeAnalysis?._id) return;
+
+    setActiveAnalysisId(record._id);
+
+    // Find the version linked to this analysis and switch to it
+    if (record.resumeVersionId) {
+      const version = versions.find((v) => v._id === record.resumeVersionId);
+      if (version && version.versionNumber !== activeVersionNumber) {
+        setActiveVersionNumber(version.versionNumber);
+        try {
+          const fileBlob = await api.getVersionFile(token, selectedResumeId, version.versionNumber);
+          replacePreview(URL.createObjectURL(fileBlob));
+        } catch (error) {
+          if (!handleAuthFailure(error)) {
+            setDashboardError("Could not load PDF for that version.");
+          }
+        }
+      }
+    }
+  };
 
   const previewDocumentUrl = previewUrl
     ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`
@@ -485,6 +538,7 @@ function Dashboard({ session, onLogout }) {
       setDashboardNotice(`Uploaded ${uploaded.fileName}.`);
       await loadResumes();
       setSelectedResumeId(uploaded._id);
+      setDetailRefresh((n) => n + 1);
       setHighlightResumeId(uploaded._id);
       setSelectedFile(null);
 
@@ -591,7 +645,7 @@ function Dashboard({ session, onLogout }) {
           <form className="panel upload-panel" onSubmit={handleUpload}>
             <div className="section-heading">
               <div>
-                <h3>Upload resume PDF</h3>
+                <h3>Upload resume PDF<span className="required-star">*</span></h3>
                 <span>Max 5 MB</span>
               </div>
             </div>
@@ -756,16 +810,21 @@ function Dashboard({ session, onLogout }) {
             {versions.length > 0 ? (
               <div className="version-list">
                 {versions.map((version) => (
-                  <article className="version-card" key={version._id}>
+                  <article
+                    className={`version-card${version.versionNumber === activeVersionNumber ? " version-card-active" : ""}`}
+                    key={version._id}
+                    onClick={() => handleVersionClick(version.versionNumber)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") handleVersionClick(version.versionNumber);
+                    }}
+                  >
                     <div className="version-top">
                       <strong>Version {version.versionNumber}</strong>
                       <span>{formatDate(version.createdAt)}</span>
                     </div>
                     <p>{version.changeSummary}</p>
-                    <div className="version-meta">
-                      <span>Improvement score</span>
-                      <strong>{formatPercent(version.improvementScore)}</strong>
-                    </div>
                   </article>
                 ))}
               </div>
@@ -778,142 +837,168 @@ function Dashboard({ session, onLogout }) {
           </div>
         </section>
 
-        <section className="analysis-grid" ref={suggestionsRef}>
-          <div className="panel suggestion-panel">
-            <div className="section-heading">
-              <div>
-                <h3>AI suggestions</h3>
-                <span>
-                  {activeAnalysis
-                    ? `${activeAnalysis.suggestions.length} recommendations`
-                    : "No analysis yet"}
-                </span>
-              </div>
-            </div>
+        <section className="review-layout">
+          <div className="review-left">
+            <div className="analysis-grid" ref={suggestionsRef}>
+              <div className="panel suggestion-panel">
+                <div className="section-heading">
+                  <div>
+                    <h3>AI suggestions</h3>
+                    <span>
+                      {activeAnalysis
+                        ? `${activeAnalysis.suggestions.length} recommendations`
+                        : "No analysis yet"}
+                    </span>
+                  </div>
+                </div>
 
-            {analysisRecords.length > 0 ? (
-              <div className="analysis-history">
-                {analysisRecords.map((record) => (
-                  <button
-                    key={record._id}
-                    type="button"
-                    className={
-                      record._id === activeAnalysis?._id
-                        ? "history-chip active"
-                        : "history-chip"
-                    }
-                    onClick={() => setActiveAnalysisId(record._id)}
-                  >
-                    <strong>{formatPercent(record.overallScore)}</strong>
-                    <span>{formatDate(record.createdAt)}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            {activeAnalysis ? (
-              <div className="suggestion-list">
-                {activeAnalysis.suggestions.map((suggestion) => (
-                  <article className="suggestion-card" key={suggestion.suggestionId}>
-                    <div className="suggestion-top">
-                      <span className={`category-pill ${suggestion.category}`}>
-                        {categoryLabel[suggestion.category]}
-                      </span>
-                      <span className={`score-pill ${scoreTone(suggestion.score)}`}>
-                        {formatPercent(suggestion.score)}
-                      </span>
-                    </div>
-
-                    <h4>{suggestion.message}</h4>
-
-                    {suggestion.beforeText ? (
-                      <div className="rewrite-block">
-                        <span>Before</span>
-                        <p>{suggestion.beforeText}</p>
-                      </div>
-                    ) : null}
-
-                    {suggestion.suggestedText ? (
-                      <div className="rewrite-block accent">
-                        <span>Suggested rewrite</span>
-                        <p>{suggestion.suggestedText}</p>
-                      </div>
-                    ) : null}
-
-                    <div className="suggestion-actions">
+                {analysisRecords.length > 0 ? (
+                  <div className="analysis-history">
+                    {analysisRecords.map((record) => (
                       <button
-                        className={
-                          suggestion.isApplied
-                            ? "secondary-button active"
-                            : "secondary-button"
-                        }
+                        key={record._id}
                         type="button"
-                        onClick={() =>
-                          handleSuggestionUpdate(suggestion.suggestionId, {
-                            isApplied: !suggestion.isApplied,
-                          })
+                        className={
+                          record._id === activeAnalysis?._id
+                            ? "history-chip active"
+                            : "history-chip"
                         }
+                        onClick={() => handleAnalysisClick(record)}
                       >
-                        {suggestion.isApplied ? "Applied" : "Mark applied"}
+                        <strong>{formatPercent(record.overallScore)}</strong>
+                        <span>{formatDate(record.createdAt)}</span>
                       </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeAnalysis ? (
+                  <>
+                    {activeAnalysis.roleMatches && activeAnalysis.roleMatches.length > 0 ? (
+                      <div className="role-matches">
+                        <div className="role-matches-header">
+                          <strong>Best-fit roles</strong>
+                          {activeAnalysis.detectedField ? (
+                            <span className="detected-field-pill">{activeAnalysis.detectedField}</span>
+                          ) : null}
+                        </div>
+                        <div className="role-pill-list">
+                          {activeAnalysis.roleMatches.map((role, i) => (
+                            <span className="role-pill" key={i}>{role}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="suggestion-list">
+                      {activeAnalysis.suggestions.map((suggestion) => (
+                        <article className="suggestion-card" key={suggestion.suggestionId}>
+                          <div className="suggestion-top">
+                            <span className={`category-pill ${suggestion.category}`}>
+                              {categoryLabel[suggestion.category]}
+                            </span>
+                            <span className={`score-pill ${scoreTone(suggestion.score)}`}>
+                              {formatPercent(suggestion.score)}
+                            </span>
+                          </div>
+
+                          <h4>{suggestion.message}</h4>
+
+                          {suggestion.beforeText ? (
+                            <div className="rewrite-block">
+                              <span>Before</span>
+                              <p>{suggestion.beforeText}</p>
+                            </div>
+                          ) : null}
+
+                          {suggestion.suggestedText ? (
+                            <div className="rewrite-block accent">
+                              <span>Suggested rewrite</span>
+                              <p>{suggestion.suggestedText}</p>
+                            </div>
+                          ) : null}
+
+                          <div className="suggestion-actions">
+                            <button
+                              className={
+                                suggestion.isApplied
+                                  ? "secondary-button active"
+                                  : "secondary-button"
+                              }
+                              type="button"
+                              onClick={() =>
+                                handleSuggestionUpdate(suggestion.suggestionId, {
+                                  isApplied: !suggestion.isApplied,
+                                })
+                              }
+                            >
+                              {suggestion.isApplied ? "Applied" : "Mark applied"}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
                     </div>
-                  </article>
-                ))}
+                  </>
+                ) : (
+                  <EmptyState
+                    body="Upload a resume and run the knight analysis to populate this board."
+                    title="No AI suggestions yet."
+                  />
+                )}
               </div>
-            ) : (
-              <EmptyState
-                body="Upload a resume and run the knight analysis to populate this board."
-                title="No AI suggestions yet."
-              />
-            )}
-          </div>
-        </section>
-
-        <section className="panel preview-panel">
-          <div className="section-heading preview-heading">
-            <div>
-              <h3>PDF preview</h3>
-              <span>{selectedResume ? selectedResume.fileName : "Nothing selected"}</span>
             </div>
-
-            {previewUrl ? (
-              <a
-                className="secondary-button preview-link"
-                href={previewUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open PDF
-              </a>
-            ) : null}
           </div>
 
-          {loadingDetail ? (
-            <EmptyState title="Loading resume details..." />
-          ) : previewUrl ? (
-            <object
-              className="resume-frame"
-              data={previewDocumentUrl}
-              type="application/pdf"
-            >
-              <div className="empty-panel">
-                <p>Preview not available in this browser.</p>
-                <a
-                  className="primary-button preview-link"
-                  href={previewUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open the PDF
-                </a>
+          <aside className="review-right">
+            <div className="panel preview-panel preview-sticky">
+              <div className="section-heading preview-heading">
+                <div>
+                  <h3>PDF preview</h3>
+                  <span>{selectedResume ? selectedResume.fileName : "Nothing selected"}</span>
+                </div>
+
+                {previewUrl ? (
+                  <a
+                    className="secondary-button preview-link"
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open PDF
+                  </a>
+                ) : null}
               </div>
-            </object>
-          ) : (
-            <EmptyState
-              body="Upload a fresh resume to enable in-app preview."
-              title="No PDF preview available."
-            />
-          )}
+
+              {loadingDetail ? (
+                <EmptyState title="Loading resume details..." />
+              ) : previewUrl ? (
+                <div className="resume-frame-wrapper">
+                  <object
+                    className="resume-frame"
+                    data={previewDocumentUrl}
+                    type="application/pdf"
+                  >
+                    <div className="empty-panel">
+                      <p>Preview not available in this browser.</p>
+                      <a
+                        className="primary-button preview-link"
+                        href={previewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open the PDF
+                      </a>
+                    </div>
+                  </object>
+                </div>
+              ) : (
+                <EmptyState
+                  body="Upload a fresh resume to enable in-app preview."
+                  title="No PDF preview available."
+                />
+              )}
+            </div>
+          </aside>
         </section>
       </main>
     </div>

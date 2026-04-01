@@ -2,7 +2,7 @@ const router = require("express").Router();
 const auth = require("../middleware/auth");
 const Resume = require("../models/Resume");
 const ResumeSuggestion = require("../models/ResumeSuggestion");
-const { analyzeResume } = require("../services/geminiAnalyzer");
+const { analyzeResume, GEMINI_MODEL } = require("../services/geminiAnalyzer");
 
 // POST /api/resumes/:resumeId/analyze — trigger AI analysis
 router.post("/:resumeId/analyze", auth, async (req, res, next) => {
@@ -20,7 +20,7 @@ router.post("/:resumeId/analyze", auth, async (req, res, next) => {
       overallScore: 0,
       analysisStatus: "running",
       suggestions: [],
-      modelUsed: "gemini-2.0-flash",
+      modelUsed: GEMINI_MODEL,
     });
 
     try {

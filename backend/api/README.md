@@ -5,11 +5,31 @@ Express + Mongoose API for the AI Resume App.
 ## Setup
 
 ```bash
+cp .env.example .env   # from the repository root
 cd backend/api
-cp .env.example .env   # then fill in your real values
 npm install
 npm start              # or: npm run dev (auto-reload)
 ```
+
+## Docker
+
+From the repository root:
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+The compose stack injects these API settings:
+
+- `PORT=5000`
+- `MONGODB_URI=mongodb://mongo:27017/<MONGO_DB>`
+- `JWT_SECRET` from the repo root `.env`
+- `GEMINI_API_KEY` from the repo root `.env`
+- `GEMINI_MODEL` from the repo root `.env` (defaults to `gemini-2.5-flash`)
+
+The API will be available at `http://localhost:5000`.
+The Dockerized React frontend proxies API requests from `http://localhost:3000`.
 
 ## Environment variables
 
@@ -19,6 +39,7 @@ npm start              # or: npm run dev (auto-reload)
 | `MONGODB_URI` | MongoDB connection string |
 | `JWT_SECRET` | Secret for signing JWTs |
 | `GEMINI_API_KEY` | Google Gemini API key |
+| `GEMINI_MODEL` | Gemini model name for resume analysis (default `gemini-2.5-flash`) |
 
 ## Endpoints
 
@@ -32,6 +53,7 @@ npm start              # or: npm run dev (auto-reload)
 | POST | `/api/resumes` | JWT | Upload PDF |
 | GET | `/api/resumes` | JWT | List resumes |
 | GET | `/api/resumes/:id` | JWT | Get resume |
+| GET | `/api/resumes/:id/file` | JWT | Stream stored PDF |
 | DELETE | `/api/resumes/:id` | JWT | Delete resume |
 | GET | `/api/resumes/:id/versions` | JWT | List versions |
 | GET | `/api/resumes/:id/versions/:num` | JWT | Get version |

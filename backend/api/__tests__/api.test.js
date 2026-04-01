@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const request = require("supertest");
 const app = require("../app");
+const Resume = require("../models/Resume");
 
 let mongo;
 
@@ -136,6 +137,37 @@ describe("Resume routes", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
+  });
+
+  it("GET /api/resumes/:id/file streams a stored PDF", async () => {
+    const owner = await request(app)
+      .get("/api/users/me")
+      .set("Authorization", `Bearer ${token}`);
+
+    const resume = await Resume.create({
+      userId: owner.body._id,
+      fileName: "stored.pdf",
+      fileUrl: "/api/resumes/test/file",
+      pdfData: Buffer.from("%PDF-1.4 mock"),
+      pdfMimeType: "application/pdf",
+      pdfSize: 13,
+      textExtracted: "Resume preview body text for file route testing.",
+      parsed: {
+        skills: [],
+        experienceYears: 0,
+        location: "",
+        education: [],
+      },
+      status: "uploaded",
+    });
+
+    const res = await request(app)
+      .get(`/api/resumes/${resume._id}/file`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("application/pdf");
+    expect(res.body).toBeInstanceOf(Buffer);
   });
 
   it("POST /api/resumes rejects non-PDF", async () => {

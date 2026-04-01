@@ -1,7 +1,15 @@
-const pdfParse = require("pdf-parse");
+const { PDFParse } = require("pdf-parse");
 
 const extractText = async (pdfBuffer) => {
-  const data = await pdfParse(pdfBuffer);
+  const parser = new PDFParse({ data: pdfBuffer });
+
+  let data;
+  try {
+    data = await parser.getText();
+  } finally {
+    await parser.destroy();
+  }
+
   const text = data.text.replace(/\s+/g, " ").trim();
 
   if (!text || text.length < 20) {

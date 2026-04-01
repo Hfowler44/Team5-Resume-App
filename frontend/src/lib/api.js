@@ -107,6 +107,11 @@ export const api = {
       headers: authHeaders(token, jsonHeaders),
     });
   },
+  getVersionFile(token, resumeId, versionNumber) {
+    return request(`/resumes/${resumeId}/versions/${versionNumber}/file`, {
+      headers: authHeaders(token),
+    });
+  },
   listSuggestions(token, resumeId) {
     return request(`/resumes/${resumeId}/suggestions`, {
       headers: authHeaders(token, jsonHeaders),

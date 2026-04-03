@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import '../utils/GlobalData.dart';
 import '../utils/getAPI.dart';
 
+///demo email & password
+const String testEmail = "test@demo.com";
+const String testPassword = "test";
+
 class LoginScreen extends StatefulWidget {
   @override
   _LoginScreenState createState() => _LoginScreenState();
@@ -15,7 +19,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue,
       body: MainPage(),
     );
   }
@@ -25,7 +28,7 @@ class MainPage extends StatefulWidget {
   _MainPageState createState() => _MainPageState();
 }
 class _MainPageState extends State<MainPage> {
-  String message = "This is a message", newMessageText = '';
+  String message = "", newMessageText = '';
   String email = '', password = '';
   changeText() {
     setState(() {
@@ -46,6 +49,16 @@ class _MainPageState extends State<MainPage> {
           mainAxisAlignment: MainAxisAlignment.center, //Center Column contents vertically,
           crossAxisAlignment: CrossAxisAlignment.center, //Center Column contents horizontal
           children: <Widget>[
+            Text(
+              "Knight My Resume",
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onBackground,
+              ),
+            ),
+            SizedBox(height: 20),
+
             Row(
               children: <Widget>[
                 Expanded(
@@ -95,6 +108,7 @@ class _MainPageState extends State<MainPage> {
                 ]
             ),
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -105,12 +119,23 @@ class _MainPageState extends State<MainPage> {
                   onPressed: () async{
                     newMessageText = "";
                     changeText();
+                    ///Temp Mock Login for testing
+                    if (email.trim() == "test@demo.com" && password.trim() == "test") {
+                      GlobalData.userId = "demo";
+                      GlobalData.fullName = "Demo User";
+                      GlobalData.email = "test@demo.com";
+                      GlobalData.token = "fake-token";
+
+                      Navigator.pushNamed(context, '/dashboard');
+                      return;
+                    }
+
                     String payload = json.encode({"email": email.trim(), "password": password.trim()});
                     var jsonObject;
                     String ret = "";
                     try
                     {
-                      String url = 'http://10.0.2.2:5000/api/auth/login';
+                      String url = 'http://resume.wannadoservers.com/api/auth/login';
                       ret = await ApiService.getJson(url, payload);
 
                       if (ret.isEmpty) {
@@ -155,7 +180,18 @@ class _MainPageState extends State<MainPage> {
                   ),
                 ),
               ],
-            )
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                TextButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/register');
+                  },
+                  child: Text("Create account"),
+                ),
+              ],
+            ),
           ],
         )
     ));

@@ -8,6 +8,8 @@ const userRoutes = require("./routes/users");
 const resumeRoutes = require("./routes/resumes");
 const resumeVersionRoutes = require("./routes/resumeVersions");
 const resumeSuggestionRoutes = require("./routes/resumeSuggestions");
+const jobRoutes = require("./routes/jobs");
+const jobMatchRoutes = require("./routes/jobMatches");
 
 const app = express();
 
@@ -26,6 +28,8 @@ app.use("/api/resumes", resumeRoutes);
 app.use("/api/resumes", resumeVersionRoutes);
 app.use("/api/resumes", resumeSuggestionRoutes);
 app.use("/api", resumeSuggestionRoutes);
+app.use("/api/jobs", jobRoutes);
+app.use("/api/jobs", jobMatchRoutes);
 
 app.use(errorHandler);
 

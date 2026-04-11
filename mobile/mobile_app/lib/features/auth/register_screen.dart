@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../utils/getAPI.dart';
-import '../utils/GlobalData.dart';
+import '../../utils/api_service.dart';
+import '../../utils/global_data.dart';
 
 class RegisterScreen extends StatefulWidget {
   @override

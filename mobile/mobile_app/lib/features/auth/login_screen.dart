@@ -1,11 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../utils/GlobalData.dart';
-import '../utils/getAPI.dart';
-
-///demo email & password
-const String testEmail = "test@demo.com";
-const String testPassword = "test";
+import '../../utils/global_data.dart';
+import '../../utils/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -119,16 +115,6 @@ class _MainPageState extends State<MainPage> {
                   onPressed: () async{
                     newMessageText = "";
                     changeText();
-                    ///Temp Mock Login for testing
-                    if (email.trim() == "test@demo.com" && password.trim() == "test") {
-                      GlobalData.userId = "demo";
-                      GlobalData.fullName = "Demo User";
-                      GlobalData.email = "test@demo.com";
-                      GlobalData.token = "fake-token";
-
-                      Navigator.pushNamed(context, '/dashboard');
-                      return;
-                    }
 
                     String payload = json.encode({"email": email.trim(), "password": password.trim()});
                     var jsonObject;

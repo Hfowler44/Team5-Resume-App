@@ -6,6 +6,8 @@ const Resume = require("../models/Resume");
 
 let mongo;
 
+jest.setTimeout(30000);
+
 beforeAll(async () => {
   // Disconnect from any existing connection (e.g., from dotenv loading MONGODB_URI)
   if (mongoose.connection.readyState !== 0) {
@@ -50,6 +52,15 @@ const loginUser = (overrides = {}) =>
     });
 
 // ---------- health ----------
+
+describe("GET /", () => {
+  it("returns API root info", async () => {
+    const res = await request(app).get("/");
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe("Resume API is running");
+    expect(res.body.health).toBe("/api/health");
+  });
+});
 
 describe("GET /api/health", () => {
   it("returns status ok", async () => {

@@ -8,11 +8,20 @@ const userRoutes = require("./routes/users");
 const resumeRoutes = require("./routes/resumes");
 const resumeVersionRoutes = require("./routes/resumeVersions");
 const resumeSuggestionRoutes = require("./routes/resumeSuggestions");
+const jobRoutes = require("./routes/jobs");
+const jobMatchRoutes = require("./routes/jobMatches");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+app.get("/", (_req, res) => {
+  res.json({
+    message: "Resume API is running",
+    health: "/api/health",
+  });
+});
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -26,6 +35,8 @@ app.use("/api/resumes", resumeRoutes);
 app.use("/api/resumes", resumeVersionRoutes);
 app.use("/api/resumes", resumeSuggestionRoutes);
 app.use("/api", resumeSuggestionRoutes);
+app.use("/api/jobs", jobRoutes);
+app.use("/api/jobs", jobMatchRoutes);
 
 app.use(errorHandler);
 

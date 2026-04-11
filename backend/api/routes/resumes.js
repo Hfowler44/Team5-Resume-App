@@ -5,6 +5,7 @@ const Resume = require("../models/Resume");
 const ResumeVersion = require("../models/ResumeVersion");
 const ResumeSuggestion = require("../models/ResumeSuggestion");
 const { extractText } = require("../services/pdfParser");
+const { parseResume, hasParsedData } = require("../services/resumeParser");
 
 // POST /api/resumes — upload a PDF resume (handles re-uploads of the same filename)
 router.post("/", auth, upload.single("resume"), async (req, res, next) => {
@@ -14,6 +15,7 @@ router.post("/", auth, upload.single("resume"), async (req, res, next) => {
     }
 
     const textExtracted = await extractText(req.file.buffer);
+    const parsed = parseResume(textExtracted);
 
     // Check if a resume with this filename already exists for the user
     const existing = await Resume.findOne({
@@ -24,6 +26,10 @@ router.post("/", auth, upload.single("resume"), async (req, res, next) => {
     if (existing) {
       // Skip if the content is identical to the current version
       if (existing.textExtracted === textExtracted) {
+        if (!hasParsedData(existing.parsed)) {
+          existing.parsed = parsed;
+          await existing.save();
+        }
         return res.status(200).json(existing);
       }
 
@@ -32,6 +38,7 @@ router.post("/", auth, upload.single("resume"), async (req, res, next) => {
       existing.pdfMimeType = req.file.mimetype;
       existing.pdfSize = req.file.size;
       existing.textExtracted = textExtracted;
+      existing.parsed = parsed;
       existing.status = "uploaded";
       await existing.save();
 
@@ -65,12 +72,7 @@ router.post("/", auth, upload.single("resume"), async (req, res, next) => {
       pdfMimeType: req.file.mimetype,
       pdfSize: req.file.size,
       textExtracted,
-      parsed: {
-        skills: [],
-        experienceYears: 0,
-        location: "",
-        education: [],
-      },
+      parsed,
       status: "uploaded",
     });
 

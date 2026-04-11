@@ -2,20 +2,10 @@ const router = require("express").Router();
 const axios = require("axios");
 const auth = require("../middleware/auth");
 const Job = require("../models/Job");
+const { extractJobSkills } = require("../services/jobMatching");
 
 const JOBS_URL =
   "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json";
-
-// helper: convert tags → requiredSkills
-const mapSkills = (job) => {
-  const tags = job.tags || [];
-  const weight = tags.length > 0 ? 1 / tags.length : 1;
-
-  return tags.map((tag) => ({
-    name: tag,
-    weight,
-  }));
-};
 
 // POST /api/jobs/sync
 router.post("/sync", auth, async (req, res, next) => {
@@ -35,15 +25,17 @@ router.post("/sync", auth, async (req, res, next) => {
         {
           $set: {
             title: job.title || "",
-            company: job.company || "",
-            location: job.location || "",
-            description: job.description || "",
-            requiredSkills: mapSkills(job),
+            company: job.company_name || job.company || "",
+            location: Array.isArray(job.locations)
+              ? job.locations.join(", ")
+              : job.location || "",
+            description: job.description || job.category || "",
+            requiredSkills: extractJobSkills(job),
             minExperienceYears: 0,
             jobUrl: job.url,
             source: "simplifyjobs",
             externalJobId,
-            isActive: true,
+            isActive: job.active !== false,
             updatedAt: new Date(),
           },
           $setOnInsert: {

@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../../utils/api_service.dart';
 import '../../utils/global_data.dart';
+import '../../features/auth/auth_service.dart';
+import '../../features/auth/user.dart';
 
 class RegisterScreen extends StatefulWidget {
   @override
@@ -93,47 +93,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void registerUser() async {
-
-    String payload = json.encode({
-      "fullName": name.trim(),
-      "email": email.trim(),
-      "password": password.trim()
-    });
-
-    String url = 'http://resume.wannadoservers.com/api/auth/register';
-
-    String ret = await ApiService.getJson(url, payload);
-
-    if (ret.isEmpty) {
-      setState(() => message = "Server not responding");
-      return;
-    }
-
-    var jsonObject;
-
-    try {
-      jsonObject = json.decode(ret);
-    } catch (e) {
-      setState(() => message = "Invalid server response");
-      return;
-    }
-
-    if (jsonObject["error"] != null) {
-      setState(() => message = jsonObject["error"]);
-      return;
-    }
-
-    var user = jsonObject["user"];
+    final user = await AuthService.register(name, email, password);
 
     if (user == null) {
-      setState(() => message = "Invalid server response");
+      setState(() => message = "Registration failed");
       return;
     }
 
-    GlobalData.userId = user["id"];
-    GlobalData.fullName = user["fullName"];
-    GlobalData.email = user["email"];
-    GlobalData.token = jsonObject["token"];
+    GlobalData.userId = user.id;
+    GlobalData.fullName = user.fullName;
+    GlobalData.email = user.email;
+    GlobalData.token = user.token;
 
     Navigator.pushNamed(context, '/dashboard');
   }

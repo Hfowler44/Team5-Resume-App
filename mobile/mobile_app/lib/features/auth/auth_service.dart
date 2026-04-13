@@ -32,4 +32,26 @@ class AuthService {
       return null;
     }
   }
+
+  static Future<User?> register(
+      String name, String email, String password) async {
+    final data = await ApiService.post(
+      '$authUrl/register',
+      {
+        "fullName": name.trim(),
+        "email": email.trim(),
+        "password": password.trim(),
+      },
+    );
+
+    if (data == null) return null;
+
+    if (data["error"] != null) return null;
+
+    try {
+      return User.fromJson(data);
+    } catch (e) {
+      return null;
+    }
+  }
 }

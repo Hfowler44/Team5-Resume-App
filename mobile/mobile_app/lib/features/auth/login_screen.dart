@@ -1,8 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../utils/global_data.dart';
-import '../../utils/api_service.dart';
-
+import "../../features/auth/auth_service.dart";
+import "../../features/auth/user.dart";
 class LoginScreen extends StatefulWidget {
   @override
   _LoginScreenState createState() => _LoginScreenState();
@@ -115,48 +114,18 @@ class _MainPageState extends State<MainPage> {
                   onPressed: () async{
                     newMessageText = "";
                     changeText();
+                    //
+                    final user = await AuthService.login(email,password);
 
-                    String payload = json.encode({"email": email.trim(), "password": password.trim()});
-                    var jsonObject;
-                    String ret = "";
-                    try
-                    {
-                      String url = 'http://resume.wannadoservers.com/api/auth/login';
-                      ret = await ApiService.getJson(url, payload);
-
-                      if (ret.isEmpty) {
-                        newMessageText = "Server not responding";
-                        changeText();
-                        return;
-                      }
-
-                      jsonObject = json.decode(ret);
-                    }
-                    catch(e)
-                    {
-                      newMessageText = "Network error";
+                    if(user == null) {
+                      newMessageText = "Login Failed";
                       changeText();
                       return;
                     }
-
-                    if (jsonObject["error"] != null) {
-                      newMessageText = jsonObject["error"];
-                      changeText();
-                      return;
-                    }
-
-                    var user = jsonObject["user"];
-
-                    if (user == null) {
-                      newMessageText = "Invalid server response";
-                      changeText();
-                      return;
-                    }
-
-                    GlobalData.userId = user["id"];
-                    GlobalData.fullName = user["fullName"];
-                    GlobalData.email = user["email"];
-                    GlobalData.token = jsonObject["token"];
+                    GlobalData.userId = user.id;
+                    GlobalData.fullName = user.fullName;
+                    GlobalData.email = user.email;
+                    GlobalData.token = user.token;
 
                     Navigator.pushNamed(context, '/dashboard');
                   },

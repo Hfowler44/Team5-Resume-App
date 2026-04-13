@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.app_mobile_demo"
+    namespace = "com.resume.mobile_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 

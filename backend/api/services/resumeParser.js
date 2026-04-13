@@ -63,6 +63,19 @@ const SECTION_ALIASES = {
   education: ["education", "academic background", "academics"],
 };
 
+const INLINE_SECTION_HEADINGS = [
+  "Technical Skills",
+  "Work Experience",
+  "Professional Experience",
+  "Relevant Coursework",
+  "Research Experience",
+  "Projects",
+  "Publications",
+  "Experience",
+  "Education",
+  "Skills",
+];
+
 const MONTHS = {
   jan: 0,
   january: 0,
@@ -90,12 +103,33 @@ const MONTHS = {
   december: 11,
 };
 
-const normalizeText = (text) =>
-  String(text || "")
+const STATE_OR_REGION_PART =
+  "(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV|WY|District of Columbia|Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming)";
+
+const LOCATION_REGEX = new RegExp(
+  `\\b([A-Z][a-zA-Z.'-]+(?: [A-Z][a-zA-Z.'-]+){0,2},\\s*${STATE_OR_REGION_PART})\\b`
+);
+
+const normalizeText = (text) => {
+  let normalized = String(text || "")
     .replace(/\r/g, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/\u00a0/g, " ")
+    .replace(/[–—−]/g, "-")
+    .replace(/[•·]/g, "\n• ")
+    .replace(/\s*--\s*\d+\s+of\s+\d+\s*--\s*/gi, "\n")
+    .replace(/[ï]+/g, " ")
+    .replace(/[ \t]+/g, " ");
+
+  for (const heading of INLINE_SECTION_HEADINGS.sort((a, b) => b.length - a.length)) {
+    const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    normalized = normalized.replace(
+      new RegExp(`\\s+(${escaped})\\s+`, "gi"),
+      "\n$1\n"
+    );
+  }
+
+  return normalized.replace(/\n{3,}/g, "\n\n").trim();
+};
 
 const toLines = (text) =>
   normalizeText(text)
@@ -107,7 +141,12 @@ const isHeadingLine = (line) => {
   if (!line) return false;
   const trimmed = line.trim().replace(/[:|]/g, "");
   if (trimmed.length > 40) return false;
-  return /^[A-Z][A-Z /&-]+$/.test(trimmed) || /^[A-Z][a-z]+(?: [A-Z][a-z]+){0,3}$/.test(trimmed);
+  return (
+    /^[A-Z][A-Z /&-]+$/.test(trimmed) ||
+    INLINE_SECTION_HEADINGS.some(
+      (heading) => trimmed.toLowerCase() === heading.toLowerCase()
+    )
+  );
 };
 
 const findSectionRange = (lines, aliases) => {
@@ -143,13 +182,46 @@ const extractSkills = (text) =>
 const extractEducation = (text) => {
   const source = sectionText(text, "education") || text;
   const lines = toLines(source);
-  const matches = lines.filter((line) =>
-    /\b(university|college|institute|school|bachelor|master|phd|doctorate|associate|b\.?s\.?|b\.?a\.?|m\.?s\.?|m\.?a\.?)\b/i.test(
+  const cleanedSource = source
+    .replace(
+      /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|ember)?|Sept(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}\s*(?:-|to)\s*(Present|Current|Now|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|ember)?|Sept(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})/gi,
+      " "
+    )
+    .replace(/\b20\d{2}\b/g, " ")
+    .replace(/[ ]{2,}/g, " ");
+  const lineMatches = lines.filter((line) =>
+    line.length <= 120 &&
+    !/\b(relevant coursework|experience|publications|technical skills|skills)\b/i.test(line) &&
+    /\b(university|college|institute|school|bachelor|master|phd|doctorate|associate|gpa|b\.?s\.?|b\.?a\.?|m\.?s\.?|m\.?a\.?)\b/i.test(
       line
     )
   );
 
-  return [...new Set(matches)].slice(0, 5);
+  const regexMatches = [];
+  const institutionMatch = cleanedSource.match(
+    /\b((?:University|College|Institute|School)(?: of)? [A-Z][a-zA-Z&.'-]+(?: [A-Z][a-zA-Z&.'-]+){0,4}|[A-Z][a-zA-Z&.'-]+(?: [A-Z][a-zA-Z&.'-]+){0,4} (?:University|College|Institute|School))\b/
+  );
+  if (institutionMatch) {
+    regexMatches.push(
+      institutionMatch[1]
+        .replace(/\s+(Bachelor|Master|Associate|Doctorate|PhD|GPA)\b.*$/i, "")
+        .trim()
+    );
+  }
+
+  const degreeMatch = cleanedSource.match(
+    /\b(Bachelor[^.\n;]{0,80}|Master[^.\n;]{0,80}|Associate[^.\n;]{0,80}|Doctorate[^.\n;]{0,80}|PhD[^.\n;]{0,80}|B\.?S\.?[^.\n;]{0,80}|B\.?A\.?[^.\n;]{0,80}|M\.?S\.?[^.\n;]{0,80}|M\.?A\.?[^.\n;]{0,80})/i
+  );
+  if (degreeMatch) {
+    regexMatches.push(
+      degreeMatch[1].replace(/\s+GPA[: ].*$/i, "").trim()
+    );
+  }
+
+  const gpaMatch = cleanedSource.match(/\b(GPA[: ]+\d(?:\.\d+)?)\b/i);
+  if (gpaMatch) regexMatches.push(gpaMatch[1]);
+
+  return [...new Set([...lineMatches, ...regexMatches])].slice(0, 5);
 };
 
 const extractLocation = (text) => {
@@ -158,9 +230,7 @@ const extractLocation = (text) => {
     const remoteMatch = line.match(/\b(remote|hybrid)\b/i);
     if (remoteMatch) return remoteMatch[0];
 
-    const locationMatch = line.match(
-      /\b([A-Z][a-zA-Z.'-]+(?: [A-Z][a-zA-Z.'-]+)*,\s*(?:[A-Z]{2}|[A-Z][a-z]+(?: [A-Z][a-z]+)*))\b/
-    );
+    const locationMatch = line.match(LOCATION_REGEX);
     if (locationMatch) return locationMatch[1];
   }
 
@@ -188,8 +258,8 @@ const extractExperienceYears = (text) => {
   const explicitYears = [];
 
   const monthYearRangeRegex =
-    /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})\s*[-to]+\s*(Present|Current|Now|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})/gi;
-  const yearRangeRegex = /\b(20\d{2})\s*[-to]+\s*(Present|Current|Now|20\d{2})\b/gi;
+    /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|ember)?|Sept(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})\s*(?:-|to)\s*(Present|Current|Now|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|ember)?|Sept(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})/gi;
+  const yearRangeRegex = /\b(20\d{2})\s*(?:-|to)\s*(Present|Current|Now|20\d{2})\b/gi;
   const explicitYearsRegex = /(\d+(?:\.\d+)?)\+?\s+years?/gi;
 
   let match;

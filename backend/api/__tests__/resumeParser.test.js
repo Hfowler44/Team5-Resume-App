@@ -52,4 +52,21 @@ Bachelor of Science in Computer Science
       })
     ).toBe(true);
   });
+
+  it("handles flattened PDF text with inline headings and unicode date ranges", () => {
+    const parsed = parseResume(
+      "Lincoln Spencer Education University of Central Florida Aug 2023 – May 2027 Bachelor of Science in Computer Science GPA: 3.7 Orlando, Florida Relevant Coursework: Applied Machine Learning Experience Institute of Artificial Intelligence March 2025 – Present Researcher Orlando, Florida Publications Technical Skills Languages: Python, Java, JavaScript Databases: SQL, MongoDB Systems and Research Tools: Docker, AWS, Linux, Git / GitHub"
+    );
+
+    expect(parsed.location).toBe("Orlando, Florida");
+    expect(parsed.experienceYears).toBeGreaterThan(0);
+    expect(parsed.education).toEqual(
+      expect.arrayContaining([
+        "University of Central Florida",
+        "Bachelor of Science in Computer Science",
+        "GPA: 3.7",
+      ])
+    );
+    expect(parsed.education[0]).not.toMatch(/Publications|Technical Skills|Experience/);
+  });
 });

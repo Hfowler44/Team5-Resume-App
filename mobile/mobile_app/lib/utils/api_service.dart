@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'global_data.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 class ApiService {
   static Map<String,String> _headers({bool isJson = true}) {
@@ -48,16 +49,33 @@ class ApiService {
       }
 
       request.files.add(
-        await http.MultipartFile.fromPath(
-          'resume',
-          file.path,
-        ),
+        await http.MultipartFile.fromPath('resume', file.path, contentType: MediaType('application', 'pdf')),
       );
 
-      var response = await request.send();
-      var responseBody = await response.stream.bytesToString();
+      var streamed = await request.send();
+      var response = await http.Response.fromStream(streamed);
 
-      return json.decode(responseBody);
+      print("UPLOAD STATUS: ${response.statusCode}");
+      print("UPLOAD BODY: ${response.body}");
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      }
+
+      return null;
+    } catch (e) {
+      print("UPLOAD ERROR: $e");
+      return null;
+    }
+  }
+
+  static Future<dynamic> delete(String url) async {
+    try{
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: _headers(isJson: false),
+      );
+      return _handleResponse(response);
     } catch (e) {
       return null;
     }

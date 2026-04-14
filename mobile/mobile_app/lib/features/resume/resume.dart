@@ -3,20 +3,24 @@ class Resume {
   final String fileName;
   final String fileUrl;
   final String status;
+  final DateTime? createdAt;
 
   Resume({
     required this.id,
     required this.fileName,
     required this.fileUrl,
     required this.status,
+    this.createdAt,
   });
 
   factory Resume.fromJson(Map<String, dynamic> json) {
     return Resume(
-      id: json["_id"],
-      fileName: json["fileName"],
-      fileUrl: json["fileUrl"],
-      status: json["status"],
+      id: json["_id"]?.toString() ?? "",
+      fileName: json["fileName"] ?? "",
+      fileUrl: json["fileUrl"] ?? "",
+      status: json["status"] ?? "",
+      createdAt: json["createdAt"] != null
+        ? DateTime.parse(json["createdAt"]) : null,
     );
   }
 }

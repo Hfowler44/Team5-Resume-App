@@ -204,6 +204,19 @@ a {
   gap: 1rem;
 }
 
+.auth-helper-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.35rem;
+}
+
+.auth-helper-copy {
+  margin: -0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
 .field {
   display: grid;
   gap: 0.45rem;
@@ -233,6 +246,25 @@ a {
   outline: none;
   border-color: var(--ucf-gold-deep);
   box-shadow: 0 0 0 4px rgba(255, 201, 4, 0.16);
+}
+
+.link-button {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ucf-black);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.link-button:hover {
+  color: var(--ucf-gold-deep);
+}
+
+.auth-back-link {
+  margin-bottom: 1rem;
 }
 
 .primary-button,

@@ -72,6 +72,26 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  requestPasswordReset(payload) {
+    return request("/auth/forgot-password", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+  resetPassword(payload) {
+    return request("/auth/reset-password", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
   getProfile(token) {
     return request("/users/me", {
       headers: authHeaders(token, jsonHeaders),

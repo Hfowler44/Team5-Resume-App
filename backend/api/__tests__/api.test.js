@@ -1,3 +1,14 @@
+process.env.JWT_SECRET = "test-secret";
+
+const mockSendMail = jest.fn();
+const mockCreateTransport = jest.fn(() => ({
+  sendMail: mockSendMail,
+}));
+
+jest.mock("nodemailer", () => ({
+  createTransport: mockCreateTransport,
+}));
+
 const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const request = require("supertest");
@@ -15,6 +26,18 @@ beforeAll(async () => {
   }
   mongo = await MongoMemoryServer.create();
   await mongoose.connect(mongo.getUri());
+});
+
+beforeEach(() => {
+  mockSendMail.mockReset();
+  mockSendMail.mockResolvedValue({ messageId: "test-message-id" });
+  mockCreateTransport.mockClear();
+  process.env.SMTP_HOST = "smtp.example.test";
+  process.env.SMTP_PORT = "587";
+  process.env.SMTP_USER = "noreply@example.test";
+  process.env.SMTP_PASS = "test-password";
+  delete process.env.SMTP_FROM;
+  delete process.env.PASSWORD_RESET_URL;
 });
 
 afterAll(async () => {
@@ -104,6 +127,60 @@ describe("Auth routes", () => {
     await registerUser();
     const res = await loginUser({ password: "wrong" });
     expect(res.status).toBe(401);
+  });
+
+  it("sends a password reset email and accepts the new password", async () => {
+    await registerUser();
+
+    const forgotRes = await request(app)
+      .post("/api/auth/forgot-password")
+      .set("Origin", "http://localhost:3000")
+      .send({ email: "test@example.com" });
+
+    expect(forgotRes.status).toBe(200);
+    expect(forgotRes.body.message).toContain("password reset link");
+    expect(mockCreateTransport).toHaveBeenCalledTimes(1);
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+
+    const mail = mockSendMail.mock.calls[0][0];
+    const resetUrl = mail.text.match(/https?:\/\/\S+/)?.[0];
+    const token = new URL(resetUrl).searchParams.get("reset");
+
+    expect(mail.to).toBe("test@example.com");
+    expect(token).toBeTruthy();
+
+    const resetRes = await request(app).post("/api/auth/reset-password").send({
+      token,
+      password: "freshpass123",
+    });
+
+    expect(resetRes.status).toBe(200);
+    expect(resetRes.body.message).toContain("Password reset successful");
+
+    const loginRes = await loginUser({ password: "freshpass123" });
+    expect(loginRes.status).toBe(200);
+  });
+
+  it("returns the same password reset response for unknown email", async () => {
+    const res = await request(app)
+      .post("/api/auth/forgot-password")
+      .send({ email: "missing@example.com" });
+
+    expect(res.status).toBe(200);
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  it("fails password reset requests when SMTP is not configured", async () => {
+    await registerUser();
+    delete process.env.SMTP_HOST;
+
+    const res = await request(app)
+      .post("/api/auth/forgot-password")
+      .send({ email: "test@example.com" });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toContain("SMTP is not configured");
+    expect(mockSendMail).not.toHaveBeenCalled();
   });
 });
 

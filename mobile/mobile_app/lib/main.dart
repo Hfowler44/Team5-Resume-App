@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_app_demo/routes/routes.dart';
+import 'package:mobile_app/routes/routes.dart';
 
 void main() {
   runApp(MyApp());
@@ -11,7 +11,12 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'AI-Assisted Resume Review',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(),
+      theme: ThemeData(
+        useMaterial3: true,
+        scaffoldBackgroundColor: Color(0xFFF4EAD5),
+        colorScheme: ColorScheme.fromSeed(seedColor: Color(0xFFFFD54F),
+        ),
+      ),
       routes: Routes.getroutes,
       initialRoute: '/',
     );

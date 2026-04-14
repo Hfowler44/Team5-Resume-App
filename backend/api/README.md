@@ -27,6 +27,7 @@ The compose stack injects these API settings:
 - `JWT_SECRET` from the repo root `.env`
 - `GEMINI_API_KEY` from the repo root `.env`
 - `GEMINI_MODEL` from the repo root `.env` (defaults to `gemini-2.5-flash`)
+- SMTP settings from the repo root `.env` for password reset email delivery
 
 The API will be available at `http://localhost:5000`.
 The Dockerized React frontend proxies API requests from `http://localhost:3000`.
@@ -40,6 +41,14 @@ The Dockerized React frontend proxies API requests from `http://localhost:3000`.
 | `JWT_SECRET` | Secret for signing JWTs |
 | `GEMINI_API_KEY` | Google Gemini API key |
 | `GEMINI_MODEL` | Gemini model name for resume analysis (default `gemini-2.5-flash`) |
+| `SMTP_HOST` | SMTP server hostname for password reset email |
+| `SMTP_PORT` | SMTP server port (typically `587` or `465`) |
+| `SMTP_USER` | SMTP username |
+| `SMTP_PASS` | SMTP password or app password |
+| `SMTP_FROM` | Optional sender address; defaults to `SMTP_USER` |
+| `SMTP_SECURE` | Optional `true` for implicit TLS, usually `false` for port `587` |
+| `PASSWORD_RESET_TOKEN_TTL_MINUTES` | Optional reset-link lifetime in minutes (default `60`) |
+| `PASSWORD_RESET_URL` | Optional frontend URL override for reset links; otherwise the API uses the request origin |
 
 ## Endpoints
 
@@ -48,6 +57,8 @@ The Dockerized React frontend proxies API requests from `http://localhost:3000`.
 | GET | `/api/health` | — | Health check |
 | POST | `/api/auth/register` | — | Register user |
 | POST | `/api/auth/login` | — | Login |
+| POST | `/api/auth/forgot-password` | — | Send password reset email |
+| POST | `/api/auth/reset-password` | — | Reset password with emailed token |
 | GET | `/api/users/me` | JWT | Get profile |
 | PUT | `/api/users/me` | JWT | Update name |
 | POST | `/api/resumes` | JWT | Upload PDF |

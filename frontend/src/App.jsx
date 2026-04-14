@@ -3,6 +3,7 @@ import { api } from "./lib/api";
 import knightMark from "./assets/knight-mark.svg";
 
 const SESSION_KEY = "knight-my-resume-session";
+const RESET_TOKEN_PARAM = "reset";
 
 const initialSession = {
   token: "",
@@ -18,6 +19,13 @@ const initialAuthForms = {
     fullName: "",
     email: "",
     password: "",
+  },
+  forgot: {
+    email: "",
+  },
+  reset: {
+    password: "",
+    confirmPassword: "",
   },
 };
 
@@ -42,6 +50,25 @@ const loadSession = () => {
   } catch {
     return initialSession;
   }
+};
+
+const loadResetToken = () => {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(RESET_TOKEN_PARAM) || "";
+};
+
+const setResetTokenInUrl = (token) => {
+  if (typeof window === "undefined") return;
+
+  const url = new URL(window.location.href);
+
+  if (token) {
+    url.searchParams.set(RESET_TOKEN_PARAM, token);
+  } else {
+    url.searchParams.delete(RESET_TOKEN_PARAM);
+  }
+
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 };
 
 const formatDate = (value) => {
@@ -75,9 +102,13 @@ const scoreTone = (value) => {
 
 function App() {
   const [session, setSession] = useState(loadSession);
-  const [authMode, setAuthMode] = useState("register");
+  const [resetToken, setResetToken] = useState(loadResetToken);
+  const [authMode, setAuthMode] = useState(() =>
+    loadResetToken() ? "reset" : "register"
+  );
   const [authForms, setAuthForms] = useState(initialAuthForms);
   const [authError, setAuthError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [booting, setBooting] = useState(Boolean(loadSession().token));
 
@@ -134,12 +165,63 @@ function App() {
     }));
   };
 
+  const changeAuthMode = (mode) => {
+    if (mode !== "reset" && resetToken) {
+      setResetToken("");
+      setResetTokenInUrl("");
+    }
+
+    setAuthMode(mode);
+    setAuthError("");
+    setAuthNotice("");
+  };
+
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
     setAuthLoading(true);
     setAuthError("");
+    setAuthNotice("");
 
     try {
+      if (authMode === "forgot") {
+        const response = await api.requestPasswordReset(authForms.forgot);
+        setAuthNotice(response.message);
+        setAuthForms((current) => ({
+          ...current,
+          login: {
+            ...current.login,
+            email: current.forgot.email,
+          },
+          forgot: initialAuthForms.forgot,
+        }));
+        return;
+      }
+
+      if (authMode === "reset") {
+        if (!resetToken) {
+          throw new Error("This password reset link is missing or invalid.");
+        }
+
+        if (authForms.reset.password !== authForms.reset.confirmPassword) {
+          throw new Error("Passwords do not match.");
+        }
+
+        const response = await api.resetPassword({
+          token: resetToken,
+          password: authForms.reset.password,
+        });
+
+        setResetToken("");
+        setResetTokenInUrl("");
+        setAuthForms((current) => ({
+          ...current,
+          reset: initialAuthForms.reset,
+        }));
+        setAuthMode("login");
+        setAuthNotice(response.message);
+        return;
+      }
+
       const payload = authForms[authMode];
       const response =
         authMode === "register"
@@ -178,8 +260,10 @@ function App() {
         authForms={authForms}
         authLoading={authLoading}
         authMode={authMode}
+        authNotice={authNotice}
+        hasResetToken={Boolean(resetToken)}
         onSubmit={handleAuthSubmit}
-        setAuthMode={setAuthMode}
+        setAuthMode={changeAuthMode}
         updateAuthField={updateAuthField}
       />
     );
@@ -193,10 +277,44 @@ function AuthScreen({
   authForms,
   authLoading,
   authMode,
+  authNotice,
+  hasResetToken,
   onSubmit,
   setAuthMode,
   updateAuthField,
 }) {
+  const isRegister = authMode === "register";
+  const isLogin = authMode === "login";
+  const isForgot = authMode === "forgot";
+  const isReset = authMode === "reset";
+  const showTabs = isRegister || isLogin;
+
+  const headerTitle = isRegister
+    ? "Create account"
+    : isLogin
+      ? "Log in"
+      : isForgot
+        ? "Reset your password"
+        : "Choose a new password";
+
+  const headerCopy = isRegister
+    ? "Start a clean resume workspace."
+    : isLogin
+      ? "Open your saved dashboard."
+      : isForgot
+        ? "Enter your email and we’ll send a reset link."
+        : "Set a new password for your account.";
+
+  const submitLabel = authLoading
+    ? "Please wait..."
+    : isRegister
+      ? "Create account"
+      : isLogin
+        ? "Login"
+        : isForgot
+          ? "Send reset email"
+          : "Save new password";
+
   return (
     <div className="auth-layout">
       <section className="auth-card-shell">
@@ -219,34 +337,40 @@ function AuthScreen({
             <span className="info-pill">Version history</span>
           </div>
 
-          <div className="tab-row">
+          {showTabs ? (
+            <div className="tab-row">
+              <button
+                className={isRegister ? "tab active" : "tab"}
+                type="button"
+                onClick={() => setAuthMode("register")}
+              >
+                Register
+              </button>
+              <button
+                className={isLogin ? "tab active" : "tab"}
+                type="button"
+                onClick={() => setAuthMode("login")}
+              >
+                Login
+              </button>
+            </div>
+          ) : (
             <button
-              className={authMode === "register" ? "tab active" : "tab"}
-              type="button"
-              onClick={() => setAuthMode("register")}
-            >
-              Register
-            </button>
-            <button
-              className={authMode === "login" ? "tab active" : "tab"}
+              className="link-button auth-back-link"
               type="button"
               onClick={() => setAuthMode("login")}
             >
-              Login
+              Back to login
             </button>
-          </div>
+          )}
 
           <div className="auth-header">
-            <h2>{authMode === "register" ? "Create account" : "Log in"}</h2>
-            <p>
-              {authMode === "register"
-                ? "Start a clean resume workspace."
-                : "Open your saved dashboard."}
-            </p>
+            <h2>{headerTitle}</h2>
+            <p>{headerCopy}</p>
           </div>
 
           <form className="auth-form" onSubmit={onSubmit}>
-            {authMode === "register" ? (
+            {isRegister ? (
               <label className="field">
                 <span>Full name<span className="required-star">*</span></span>
                 <input
@@ -260,39 +384,103 @@ function AuthScreen({
               </label>
             ) : null}
 
-            <label className="field">
-              <span>Email<span className="required-star">*</span></span>
-              <input
-                type="email"
-                value={authForms[authMode].email}
-                onChange={(event) => updateAuthField(authMode, "email", event.target.value)}
-                placeholder="knight@ucf.edu"
-                required
-              />
-            </label>
+            {isReset ? (
+              <>
+                <label className="field">
+                  <span>New password<span className="required-star">*</span></span>
+                  <input
+                    type="password"
+                    value={authForms.reset.password}
+                    onChange={(event) =>
+                      updateAuthField("reset", "password", event.target.value)
+                    }
+                    placeholder="Minimum 6 characters"
+                    minLength={6}
+                    required
+                  />
+                </label>
 
-            <label className="field">
-              <span>Password<span className="required-star">*</span></span>
-              <input
-                type="password"
-                value={authForms[authMode].password}
-                onChange={(event) =>
-                  updateAuthField(authMode, "password", event.target.value)
-                }
-                placeholder="Minimum 6 characters"
-                minLength={6}
-                required
-              />
-            </label>
+                <label className="field">
+                  <span>Confirm password<span className="required-star">*</span></span>
+                  <input
+                    type="password"
+                    value={authForms.reset.confirmPassword}
+                    onChange={(event) =>
+                      updateAuthField("reset", "confirmPassword", event.target.value)
+                    }
+                    placeholder="Re-enter your password"
+                    minLength={6}
+                    required
+                  />
+                </label>
+
+                {!hasResetToken ? (
+                  <p className="auth-helper-copy">
+                    This reset link is missing its token. Request a new email to continue.
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <label className="field">
+                  <span>Email<span className="required-star">*</span></span>
+                  <input
+                    type="email"
+                    value={authForms[authMode].email}
+                    onChange={(event) =>
+                      updateAuthField(authMode, "email", event.target.value)
+                    }
+                    placeholder="knight@ucf.edu"
+                    required
+                  />
+                </label>
+
+                {isForgot ? (
+                  <p className="auth-helper-copy">
+                    If the address exists in the system, we&apos;ll send a one-time reset
+                    link there.
+                  </p>
+                ) : (
+                  <>
+                    <label className="field">
+                      <span>Password<span className="required-star">*</span></span>
+                      <input
+                        type="password"
+                        value={authForms[authMode].password}
+                        onChange={(event) =>
+                          updateAuthField(authMode, "password", event.target.value)
+                        }
+                        placeholder="Minimum 6 characters"
+                        minLength={6}
+                        required
+                      />
+                    </label>
+
+                    {isLogin ? (
+                      <div className="auth-helper-row">
+                        <button
+                          className="link-button"
+                          type="button"
+                          onClick={() => setAuthMode("forgot")}
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </>
+            )}
+
+            {authNotice ? <p className="banner success">{authNotice}</p> : null}
 
             {authError ? <p className="banner error">{authError}</p> : null}
 
-            <button className="primary-button auth-submit" disabled={authLoading}>
-              {authLoading
-                ? "Please wait..."
-                : authMode === "register"
-                  ? "Create account"
-                  : "Login"}
+            <button
+              className="primary-button auth-submit"
+              disabled={authLoading || (isReset && !hasResetToken)}
+            >
+              {submitLabel}
             </button>
           </form>
         </div>

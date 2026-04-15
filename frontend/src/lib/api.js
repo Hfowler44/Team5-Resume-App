@@ -153,6 +153,12 @@ export const api = {
       headers: authHeaders(token, jsonHeaders),
     });
   },
+  syncJobs(token) {
+    return request("/jobs/sync", {
+      method: "POST",
+      headers: authHeaders(token, jsonHeaders),
+    });
+  },
   matchJobs(token, resumeId) {
     return request(`/jobs/match/${resumeId}`, {
       method: "POST",

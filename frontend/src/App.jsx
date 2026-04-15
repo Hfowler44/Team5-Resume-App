@@ -561,6 +561,10 @@ function Dashboard({ session, onLogout }) {
     setDashboardError("");
 
     try {
+      await api.syncJobs(token);
+
+      if (jobMatchRequestRef.current !== requestId) return;
+
       const matches = await api.matchJobs(token, resumeId);
 
       if (jobMatchRequestRef.current !== requestId) return;
@@ -1094,7 +1098,7 @@ function Dashboard({ session, onLogout }) {
                         : !selectedResumeId
                           ? "Choose a resume first"
                           : loadingJobMatches
-                            ? "Finding matching roles..."
+                            ? "Syncing listings and finding matches..."
                             : jobMatches.length > 0
                               ? `${jobMatches.length} roles found`
                               : "No matches yet"}
@@ -1319,8 +1323,8 @@ function JobMatchesPanel({ hasSelectedResume, jobMatches, loadingJobMatches }) {
   if (loadingJobMatches) {
     return (
       <EmptyState
-        body="Comparing your resume against the current job listings."
-        title="Finding matching roles..."
+        body="Syncing the latest listings, then comparing your resume against them."
+        title="Syncing jobs and finding matches..."
       />
     );
   }

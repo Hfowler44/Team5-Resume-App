@@ -9,10 +9,16 @@ jest.mock("nodemailer", () => ({
   createTransport: mockCreateTransport,
 }));
 
+jest.mock("axios", () => ({
+  get: jest.fn(),
+}));
+
 const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const request = require("supertest");
+const axios = require("axios");
 const app = require("../app");
+const Job = require("../models/Job");
 const Resume = require("../models/Resume");
 
 let mongo;
@@ -32,6 +38,7 @@ beforeEach(() => {
   mockSendMail.mockReset();
   mockSendMail.mockResolvedValue({ messageId: "test-message-id" });
   mockCreateTransport.mockClear();
+  axios.get.mockReset();
   process.env.SMTP_HOST = "smtp.example.test";
   process.env.SMTP_PORT = "587";
   process.env.SMTP_USER = "noreply@example.test";
@@ -278,5 +285,102 @@ describe("Resume routes", () => {
       .post("/api/resumes")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(400);
+  });
+});
+
+// ---------- jobs ----------
+
+describe("Job sync routes", () => {
+  let token;
+
+  beforeEach(async () => {
+    const reg = await registerUser({ email: "jobs@example.com" });
+    token = reg.body.token;
+  });
+
+  it("POST /api/jobs/sync imports jobs from the upstream feed", async () => {
+    axios.get.mockResolvedValue({
+      data: [
+        {
+          id: "role-1",
+          title: "Software Engineer Intern",
+          company_name: "Example Corp",
+          locations: ["Remote", "Orlando, FL"],
+          description: "Build internal tools with JavaScript and React.",
+          url: "https://jobs.example.test/role-1",
+          active: true,
+        },
+        {
+          id: "role-2",
+          title: "Backend Intern",
+          company: "Data Co",
+          location: "New York, NY",
+          category: "Python APIs",
+          url: "https://jobs.example.test/role-2",
+          active: false,
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .post("/api/jobs/sync")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe("Jobs synced");
+    expect(res.body.totalProcessed).toBe(2);
+    expect(axios.get).toHaveBeenCalledTimes(1);
+
+    const jobs = await Job.find().sort({ externalJobId: 1 }).lean();
+    expect(jobs).toHaveLength(2);
+    expect(jobs[0]).toMatchObject({
+      company: "Example Corp",
+      externalJobId: "role-1",
+      isActive: true,
+      jobUrl: "https://jobs.example.test/role-1",
+      location: "Remote, Orlando, FL",
+      source: "simplifyjobs",
+      title: "Software Engineer Intern",
+    });
+    expect(jobs[1]).toMatchObject({
+      company: "Data Co",
+      externalJobId: "role-2",
+      isActive: false,
+      jobUrl: "https://jobs.example.test/role-2",
+      location: "New York, NY",
+      source: "simplifyjobs",
+      title: "Backend Intern",
+    });
+  });
+
+  it("POST /api/jobs/sync skips a full import when jobs were synced recently", async () => {
+    const now = new Date();
+
+    await Job.create({
+      title: "Existing Role",
+      company: "Example Corp",
+      location: "Remote",
+      description: "Existing listing",
+      requiredSkills: [],
+      minExperienceYears: 0,
+      jobUrl: "https://jobs.example.test/existing",
+      source: "simplifyjobs",
+      externalJobId: "existing-role",
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const res = await request(app)
+      .post("/api/jobs/sync")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      message: "Jobs already synced recently",
+      totalProcessed: 0,
+      skipped: true,
+    });
+    expect(axios.get).not.toHaveBeenCalled();
   });
 });

@@ -507,9 +507,14 @@ function Dashboard({ session, onLogout }) {
   const [highlightResumeId, setHighlightResumeId] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [detailRefresh, setDetailRefresh] = useState(0);
+  const [reviewTab, setReviewTab] = useState("suggestions");
+  const [jobMatches, setJobMatches] = useState([]);
+  const [jobMatchesResumeId, setJobMatchesResumeId] = useState(null);
+  const [loadingJobMatches, setLoadingJobMatches] = useState(false);
   const fileInputRef = useRef(null);
   const previewRef = useRef("");
   const suggestionsRef = useRef(null);
+  const jobMatchRequestRef = useRef(0);
   const token = session.token;
 
   const replacePreview = (nextUrl) => {
@@ -529,6 +534,13 @@ function Dashboard({ session, onLogout }) {
     };
   }, []);
 
+  useEffect(() => {
+    setJobMatches([]);
+    setJobMatchesResumeId(null);
+    setLoadingJobMatches(false);
+    jobMatchRequestRef.current += 1;
+  }, [selectedResumeId]);
+
   const handleAuthFailure = (error) => {
     if (error?.status === 401) {
       onLogout();
@@ -536,6 +548,36 @@ function Dashboard({ session, onLogout }) {
     }
 
     return false;
+  };
+
+  const loadJobMatches = async (resumeId, { force = false } = {}) => {
+    if (!resumeId) return;
+    if (!force && jobMatchesResumeId === resumeId) return;
+
+    const requestId = jobMatchRequestRef.current + 1;
+    jobMatchRequestRef.current = requestId;
+
+    setLoadingJobMatches(true);
+    setDashboardError("");
+
+    try {
+      const matches = await api.matchJobs(token, resumeId);
+
+      if (jobMatchRequestRef.current !== requestId) return;
+
+      setJobMatches(matches);
+      setJobMatchesResumeId(resumeId);
+    } catch (error) {
+      if (jobMatchRequestRef.current !== requestId) return;
+
+      if (!handleAuthFailure(error)) {
+        setDashboardError(error.message);
+      }
+    } finally {
+      if (jobMatchRequestRef.current === requestId) {
+        setLoadingJobMatches(false);
+      }
+    }
   };
 
   const loadResumes = async () => {
@@ -634,6 +676,18 @@ function Dashboard({ session, onLogout }) {
       cancelled = true;
     };
   }, [selectedResumeId, detailRefresh, token]);
+
+  useEffect(() => {
+    if (reviewTab !== "jobs" || !selectedResumeId) {
+      return;
+    }
+
+    if (jobMatchesResumeId === selectedResumeId) {
+      return;
+    }
+
+    loadJobMatches(selectedResumeId);
+  }, [jobMatchesResumeId, reviewTab, selectedResumeId, token]);
 
   const activeAnalysis = useMemo(
     () =>
@@ -1029,108 +1083,158 @@ function Dashboard({ session, onLogout }) {
           <div className="review-left">
             <div className="analysis-grid" ref={suggestionsRef}>
               <div className="panel suggestion-panel">
-                <div className="section-heading">
+                <div className="section-heading review-heading">
                   <div>
-                    <h3>AI suggestions</h3>
+                    <h3>{reviewTab === "suggestions" ? "AI suggestions" : "Job matches"}</h3>
                     <span>
-                      {activeAnalysis
-                        ? `${activeAnalysis.suggestions.length} recommendations`
-                        : "No analysis yet"}
+                      {reviewTab === "suggestions"
+                        ? activeAnalysis
+                          ? `${activeAnalysis.suggestions.length} recommendations`
+                          : "No analysis yet"
+                        : !selectedResumeId
+                          ? "Choose a resume first"
+                          : loadingJobMatches
+                            ? "Finding matching roles..."
+                            : jobMatches.length > 0
+                              ? `${jobMatches.length} roles found`
+                              : "No matches yet"}
                     </span>
                   </div>
+
+                  {reviewTab === "jobs" && selectedResumeId ? (
+                    <button
+                      className="ghost-button review-refresh"
+                      type="button"
+                      onClick={() => loadJobMatches(selectedResumeId, { force: true })}
+                      disabled={loadingJobMatches}
+                    >
+                      {loadingJobMatches ? "Refreshing..." : "Refresh jobs"}
+                    </button>
+                  ) : null}
                 </div>
 
-                {analysisRecords.length > 0 ? (
-                  <div className="analysis-history">
-                    {analysisRecords.map((record) => (
-                      <button
-                        key={record._id}
-                        type="button"
-                        className={
-                          record._id === activeAnalysis?._id
-                            ? "history-chip active"
-                            : "history-chip"
-                        }
-                        onClick={() => handleAnalysisClick(record)}
-                      >
-                        <strong>{formatPercent(record.overallScore)}</strong>
-                        <span>{formatDate(record.createdAt)}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+                <div className="review-tab-row">
+                  <button
+                    className={reviewTab === "suggestions" ? "tab active" : "tab"}
+                    type="button"
+                    onClick={() => setReviewTab("suggestions")}
+                  >
+                    Suggestions
+                  </button>
+                  <button
+                    className={reviewTab === "jobs" ? "tab active" : "tab"}
+                    type="button"
+                    onClick={() => setReviewTab("jobs")}
+                  >
+                    Job matches
+                  </button>
+                </div>
 
-                {activeAnalysis ? (
+                {reviewTab === "suggestions" ? (
                   <>
-                    {activeAnalysis.roleMatches && activeAnalysis.roleMatches.length > 0 ? (
-                      <div className="role-matches">
-                        <div className="role-matches-header">
-                          <strong>Best-fit roles</strong>
-                          {activeAnalysis.detectedField ? (
-                            <span className="detected-field-pill">{activeAnalysis.detectedField}</span>
-                          ) : null}
-                        </div>
-                        <div className="role-pill-list">
-                          {activeAnalysis.roleMatches.map((role, i) => (
-                            <span className="role-pill" key={i}>{role}</span>
-                          ))}
-                        </div>
+                    {analysisRecords.length > 0 ? (
+                      <div className="analysis-history">
+                        {analysisRecords.map((record) => (
+                          <button
+                            key={record._id}
+                            type="button"
+                            className={
+                              record._id === activeAnalysis?._id
+                                ? "history-chip active"
+                                : "history-chip"
+                            }
+                            onClick={() => handleAnalysisClick(record)}
+                          >
+                            <strong>{formatPercent(record.overallScore)}</strong>
+                            <span>{formatDate(record.createdAt)}</span>
+                          </button>
+                        ))}
                       </div>
                     ) : null}
 
-                    <div className="suggestion-list">
-                      {activeAnalysis.suggestions.map((suggestion) => (
-                        <article className="suggestion-card" key={suggestion.suggestionId}>
-                          <div className="suggestion-top">
-                            <span className={`category-pill ${suggestion.category}`}>
-                              {categoryLabel[suggestion.category]}
-                            </span>
-                            <span className={`score-pill ${scoreTone(suggestion.score)}`}>
-                              {formatPercent(suggestion.score)}
-                            </span>
-                          </div>
-
-                          <h4>{suggestion.message}</h4>
-
-                          {suggestion.beforeText ? (
-                            <div className="rewrite-block">
-                              <span>Before</span>
-                              <p>{suggestion.beforeText}</p>
+                    {activeAnalysis ? (
+                      <>
+                        {activeAnalysis.roleMatches && activeAnalysis.roleMatches.length > 0 ? (
+                          <div className="role-matches">
+                            <div className="role-matches-header">
+                              <strong>Best-fit roles</strong>
+                              {activeAnalysis.detectedField ? (
+                                <span className="detected-field-pill">
+                                  {activeAnalysis.detectedField}
+                                </span>
+                              ) : null}
                             </div>
-                          ) : null}
-
-                          {suggestion.suggestedText ? (
-                            <div className="rewrite-block accent">
-                              <span>Suggested rewrite</span>
-                              <p>{suggestion.suggestedText}</p>
+                            <div className="role-pill-list">
+                              {activeAnalysis.roleMatches.map((role, i) => (
+                                <span className="role-pill" key={i}>
+                                  {role}
+                                </span>
+                              ))}
                             </div>
-                          ) : null}
-
-                          <div className="suggestion-actions">
-                            <button
-                              className={
-                                suggestion.isApplied
-                                  ? "secondary-button active"
-                                  : "secondary-button"
-                              }
-                              type="button"
-                              onClick={() =>
-                                handleSuggestionUpdate(suggestion.suggestionId, {
-                                  isApplied: !suggestion.isApplied,
-                                })
-                              }
-                            >
-                              {suggestion.isApplied ? "Applied" : "Mark applied"}
-                            </button>
                           </div>
-                        </article>
-                      ))}
-                    </div>
+                        ) : null}
+
+                        <div className="suggestion-list">
+                          {activeAnalysis.suggestions.map((suggestion) => (
+                            <article className="suggestion-card" key={suggestion.suggestionId}>
+                              <div className="suggestion-top">
+                                <span className={`category-pill ${suggestion.category}`}>
+                                  {categoryLabel[suggestion.category]}
+                                </span>
+                                <span className={`score-pill ${scoreTone(suggestion.score)}`}>
+                                  {formatPercent(suggestion.score)}
+                                </span>
+                              </div>
+
+                              <h4>{suggestion.message}</h4>
+
+                              {suggestion.beforeText ? (
+                                <div className="rewrite-block">
+                                  <span>Before</span>
+                                  <p>{suggestion.beforeText}</p>
+                                </div>
+                              ) : null}
+
+                              {suggestion.suggestedText ? (
+                                <div className="rewrite-block accent">
+                                  <span>Suggested rewrite</span>
+                                  <p>{suggestion.suggestedText}</p>
+                                </div>
+                              ) : null}
+
+                              <div className="suggestion-actions">
+                                <button
+                                  className={
+                                    suggestion.isApplied
+                                      ? "secondary-button active"
+                                      : "secondary-button"
+                                  }
+                                  type="button"
+                                  onClick={() =>
+                                    handleSuggestionUpdate(suggestion.suggestionId, {
+                                      isApplied: !suggestion.isApplied,
+                                    })
+                                  }
+                                >
+                                  {suggestion.isApplied ? "Applied" : "Mark applied"}
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <EmptyState
+                        body="Upload a resume and run the knight analysis to populate this board."
+                        title="No AI suggestions yet."
+                      />
+                    )}
                   </>
                 ) : (
-                  <EmptyState
-                    body="Upload a resume and run the knight analysis to populate this board."
-                    title="No AI suggestions yet."
+                  <JobMatchesPanel
+                    hasSelectedResume={Boolean(selectedResumeId)}
+                    jobMatches={jobMatches}
+                    loadingJobMatches={loadingJobMatches}
                   />
                 )}
               </div>
@@ -1198,6 +1302,100 @@ function EmptyState({ body, title }) {
     <div className="empty-panel">
       <p>{title}</p>
       {body ? <span>{body}</span> : null}
+    </div>
+  );
+}
+
+function JobMatchesPanel({ hasSelectedResume, jobMatches, loadingJobMatches }) {
+  if (!hasSelectedResume) {
+    return (
+      <EmptyState
+        body="Choose a resume from the vault to score it against the available jobs."
+        title="Select a resume to unlock job matches."
+      />
+    );
+  }
+
+  if (loadingJobMatches) {
+    return (
+      <EmptyState
+        body="Comparing your resume against the current job listings."
+        title="Finding matching roles..."
+      />
+    );
+  }
+
+  if (jobMatches.length === 0) {
+    return (
+      <EmptyState
+        body="No roles cleared the current match threshold for this resume."
+        title="No job matches found yet."
+      />
+    );
+  }
+
+  return (
+    <div className="job-match-list">
+      {jobMatches.map((match, index) => {
+        const job = match.job || {};
+        const jobKey =
+          job._id || job.externalJobId || `${job.company}-${job.title}-${index}`;
+        const topSkills = Array.isArray(job.requiredSkills)
+          ? job.requiredSkills.slice(0, 6)
+          : [];
+
+        return (
+          <article className="job-match-card" key={jobKey}>
+            <div className="job-match-top">
+              <div className="job-match-copy">
+                <span className="job-match-company">{job.company || "Unknown company"}</span>
+                <h4>{job.title || "Untitled role"}</h4>
+              </div>
+
+              <span className={`score-pill ${scoreTone(match.matchScore)}`}>
+                {formatPercent(match.matchScore)} match
+              </span>
+            </div>
+
+            {job.location || job.source ? (
+              <div className="job-meta-row">
+                {job.location ? <span className="job-meta-chip">{job.location}</span> : null}
+                {job.source ? <span className="job-meta-chip">{job.source}</span> : null}
+              </div>
+            ) : null}
+
+            {job.description ? <p className="job-description">{job.description}</p> : null}
+
+            {topSkills.length > 0 ? (
+              <div className="job-skill-list">
+                {topSkills.map((skill) => (
+                  <span
+                    className="job-skill-pill"
+                    key={`${jobKey}-${skill.name || "skill"}`}
+                  >
+                    {skill.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="job-card-actions">
+              {job.jobUrl ? (
+                <a
+                  className="primary-button job-link-button"
+                  href={job.jobUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open listing
+                </a>
+              ) : (
+                <span className="job-link-missing">Link unavailable</span>
+              )}
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }

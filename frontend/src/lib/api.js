@@ -153,6 +153,12 @@ export const api = {
       headers: authHeaders(token, jsonHeaders),
     });
   },
+  matchJobs(token, resumeId) {
+    return request(`/jobs/match/${resumeId}`, {
+      method: "POST",
+      headers: authHeaders(token, jsonHeaders),
+    });
+  },
   updateSuggestion(token, recordId, suggestionId, payload) {
     return request(`/suggestions/${recordId}/items/${suggestionId}`, {
       method: "PATCH",

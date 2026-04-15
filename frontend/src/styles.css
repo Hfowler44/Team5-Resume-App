@@ -557,10 +557,29 @@ a {
   top: 1rem;
 }
 
+.review-heading {
+  align-items: center;
+}
+
+.review-refresh {
+  white-space: nowrap;
+}
+
+.review-tab-row {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 24rem);
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: rgba(255, 201, 4, 0.16);
+  margin-bottom: 1rem;
+}
+
 .resume-list,
 .analysis-history,
 .version-list,
-.suggestion-list {
+.suggestion-list,
+.job-match-list {
   display: grid;
   gap: 0.85rem;
 }
@@ -707,6 +726,7 @@ a {
 .briefing-card,
 .version-card,
 .suggestion-card,
+.job-match-card,
 .rewrite-block,
 .focus-note {
   border-radius: 18px;
@@ -808,6 +828,10 @@ a {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.job-match-card {
+  padding: 1rem;
+}
+
 .version-card:hover {
   border-color: var(--ucf-gold-deep);
 }
@@ -832,6 +856,87 @@ a {
   margin: 0.9rem 0 0.7rem;
   font-size: 1.02rem;
   line-height: 1.45;
+}
+
+.job-match-top,
+.job-card-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.job-match-copy {
+  min-width: 0;
+}
+
+.job-match-company {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.job-match-card h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.job-meta-row,
+.job-skill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.job-meta-chip,
+.job-skill-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.38rem 0.72rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.job-meta-chip {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink);
+}
+
+.job-skill-pill {
+  background: rgba(255, 201, 4, 0.14);
+  color: #7b5800;
+}
+
+.job-description {
+  margin: 0.85rem 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  -webkit-line-clamp: 4;
+}
+
+.job-card-actions {
+  margin-top: 1rem;
+}
+
+.job-link-button {
+  min-width: 10rem;
+}
+
+.job-link-missing {
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .rewrite-block {
@@ -924,6 +1029,9 @@ a {
   .summary-head,
   .preview-heading,
   .suggestion-actions,
+  .review-heading,
+  .job-match-top,
+  .job-card-actions,
   .version-top,
   .version-meta {
     flex-direction: column;

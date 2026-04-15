@@ -153,8 +153,10 @@ export const api = {
       headers: authHeaders(token, jsonHeaders),
     });
   },
-  syncJobs(token) {
-    return request("/jobs/sync", {
+  syncJobs(token, options = {}) {
+    const query = options.force ? "?force=true" : "";
+
+    return request(`/jobs/sync${query}`, {
       method: "POST",
       headers: authHeaders(token, jsonHeaders),
     });

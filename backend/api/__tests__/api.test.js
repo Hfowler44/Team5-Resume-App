@@ -383,4 +383,49 @@ describe("Job sync routes", () => {
     });
     expect(axios.get).not.toHaveBeenCalled();
   });
+
+  it("POST /api/jobs/sync?force=true bypasses the recent-sync shortcut", async () => {
+    const now = new Date();
+
+    await Job.create({
+      title: "Existing Role",
+      company: "Example Corp",
+      location: "Remote",
+      description: "Existing listing",
+      requiredSkills: [],
+      minExperienceYears: 0,
+      jobUrl: "https://jobs.example.test/existing",
+      source: "simplifyjobs",
+      externalJobId: "existing-role",
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    axios.get.mockResolvedValue({
+      data: [
+        {
+          id: "role-3",
+          title: "Platform Intern",
+          company_name: "Refresh Corp",
+          location: "Atlanta, GA",
+          description: "Work with Node.js and MongoDB.",
+          url: "https://jobs.example.test/role-3",
+          active: true,
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .post("/api/jobs/sync?force=true")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      message: "Jobs synced",
+      totalProcessed: 1,
+      skipped: false,
+    });
+    expect(axios.get).toHaveBeenCalledTimes(1);
+  });
 });

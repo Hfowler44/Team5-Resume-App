@@ -511,6 +511,7 @@ function Dashboard({ session, onLogout }) {
   const [jobMatches, setJobMatches] = useState([]);
   const [jobMatchesResumeId, setJobMatchesResumeId] = useState(null);
   const [loadingJobMatches, setLoadingJobMatches] = useState(false);
+  const [jobMatchPhase, setJobMatchPhase] = useState("idle");
   const fileInputRef = useRef(null);
   const previewRef = useRef("");
   const suggestionsRef = useRef(null);
@@ -538,6 +539,7 @@ function Dashboard({ session, onLogout }) {
     setJobMatches([]);
     setJobMatchesResumeId(null);
     setLoadingJobMatches(false);
+    setJobMatchPhase("idle");
     jobMatchRequestRef.current += 1;
   }, [selectedResumeId]);
 
@@ -550,7 +552,10 @@ function Dashboard({ session, onLogout }) {
     return false;
   };
 
-  const loadJobMatches = async (resumeId, { force = false } = {}) => {
+  const loadJobMatches = async (
+    resumeId,
+    { force = false, resync = false } = {}
+  ) => {
     if (!resumeId) return;
     if (!force && jobMatchesResumeId === resumeId) return;
 
@@ -558,12 +563,15 @@ function Dashboard({ session, onLogout }) {
     jobMatchRequestRef.current = requestId;
 
     setLoadingJobMatches(true);
+    setJobMatchPhase(resync ? "syncing" : "matching");
     setDashboardError("");
 
     try {
-      await api.syncJobs(token);
+      if (resync) {
+        await api.syncJobs(token, { force: true });
 
-      if (jobMatchRequestRef.current !== requestId) return;
+        if (jobMatchRequestRef.current !== requestId) return;
+      }
 
       const matches = await api.matchJobs(token, resumeId);
 
@@ -580,6 +588,7 @@ function Dashboard({ session, onLogout }) {
     } finally {
       if (jobMatchRequestRef.current === requestId) {
         setLoadingJobMatches(false);
+        setJobMatchPhase("idle");
       }
     }
   };
@@ -1098,7 +1107,9 @@ function Dashboard({ session, onLogout }) {
                         : !selectedResumeId
                           ? "Choose a resume first"
                           : loadingJobMatches
-                            ? "Syncing listings and finding matches..."
+                            ? jobMatchPhase === "syncing"
+                              ? "Syncing listings and refreshing matches..."
+                              : "Finding matching roles..."
                             : jobMatches.length > 0
                               ? `${jobMatches.length} roles found`
                               : "No matches yet"}
@@ -1109,10 +1120,19 @@ function Dashboard({ session, onLogout }) {
                     <button
                       className="ghost-button review-refresh"
                       type="button"
-                      onClick={() => loadJobMatches(selectedResumeId, { force: true })}
+                      onClick={() =>
+                        loadJobMatches(selectedResumeId, {
+                          force: true,
+                          resync: true,
+                        })
+                      }
                       disabled={loadingJobMatches}
                     >
-                      {loadingJobMatches ? "Refreshing..." : "Refresh jobs"}
+                      {loadingJobMatches && jobMatchPhase === "syncing"
+                        ? "Syncing..."
+                        : loadingJobMatches
+                          ? "Refreshing..."
+                          : "Refresh jobs"}
                     </button>
                   ) : null}
                 </div>
@@ -1238,6 +1258,7 @@ function Dashboard({ session, onLogout }) {
                   <JobMatchesPanel
                     hasSelectedResume={Boolean(selectedResumeId)}
                     jobMatches={jobMatches}
+                    jobMatchPhase={jobMatchPhase}
                     loadingJobMatches={loadingJobMatches}
                   />
                 )}
@@ -1310,7 +1331,12 @@ function EmptyState({ body, title }) {
   );
 }
 
-function JobMatchesPanel({ hasSelectedResume, jobMatches, loadingJobMatches }) {
+function JobMatchesPanel({
+  hasSelectedResume,
+  jobMatches,
+  jobMatchPhase,
+  loadingJobMatches,
+}) {
   if (!hasSelectedResume) {
     return (
       <EmptyState
@@ -1323,8 +1349,16 @@ function JobMatchesPanel({ hasSelectedResume, jobMatches, loadingJobMatches }) {
   if (loadingJobMatches) {
     return (
       <EmptyState
-        body="Syncing the latest listings, then comparing your resume against them."
-        title="Syncing jobs and finding matches..."
+        body={
+          jobMatchPhase === "syncing"
+            ? "Refreshing the job feed, then recomputing the best matches for this resume."
+            : "Comparing this resume against the jobs already synced into the app."
+        }
+        title={
+          jobMatchPhase === "syncing"
+            ? "Syncing jobs and finding matches..."
+            : "Finding matching roles..."
+        }
       />
     );
   }

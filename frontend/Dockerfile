@@ -11,9 +11,17 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+RUN apk add --no-cache certbot openssl
+
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+COPY docker-entrypoint.d/10-https-defaults.envsh /docker-entrypoint.d/10-https-defaults.envsh
+COPY docker-entrypoint.d/30-certbot.sh /docker-entrypoint.d/30-certbot.sh
 COPY --from=build /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+RUN chmod +x \
+  /docker-entrypoint.d/10-https-defaults.envsh \
+  /docker-entrypoint.d/30-certbot.sh
+
+EXPOSE 80 443
 
 CMD ["nginx", "-g", "daemon off;"]

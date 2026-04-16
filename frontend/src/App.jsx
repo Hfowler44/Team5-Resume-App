@@ -3,6 +3,8 @@ import { api } from "./lib/api";
 import knightMark from "./assets/knight-mark.svg";
 
 const SESSION_KEY = "knight-my-resume-session";
+const RESET_TOKEN_PARAM = "reset";
+const VERIFY_TOKEN_PARAM = "verify";
 
 const initialSession = {
   token: "",
@@ -18,6 +20,16 @@ const initialAuthForms = {
     fullName: "",
     email: "",
     password: "",
+  },
+  forgot: {
+    email: "",
+  },
+  resend: {
+    email: "",
+  },
+  reset: {
+    password: "",
+    confirmPassword: "",
   },
 };
 
@@ -42,6 +54,25 @@ const loadSession = () => {
   } catch {
     return initialSession;
   }
+};
+
+const loadQueryToken = (paramName) => {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(paramName) || "";
+};
+
+const setQueryTokenInUrl = (paramName, token) => {
+  if (typeof window === "undefined") return;
+
+  const url = new URL(window.location.href);
+
+  if (token) {
+    url.searchParams.set(paramName, token);
+  } else {
+    url.searchParams.delete(paramName);
+  }
+
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 };
 
 const formatDate = (value) => {
@@ -75,11 +106,23 @@ const scoreTone = (value) => {
 
 function App() {
   const [session, setSession] = useState(loadSession);
-  const [authMode, setAuthMode] = useState("register");
+  const [resetToken, setResetToken] = useState(() =>
+    loadQueryToken(RESET_TOKEN_PARAM)
+  );
+  const [verifyToken, setVerifyToken] = useState(() =>
+    loadQueryToken(VERIFY_TOKEN_PARAM)
+  );
+  const [authMode, setAuthMode] = useState(() => {
+    if (loadQueryToken(VERIFY_TOKEN_PARAM)) return "verify";
+    if (loadQueryToken(RESET_TOKEN_PARAM)) return "reset";
+    return "register";
+  });
   const [authForms, setAuthForms] = useState(initialAuthForms);
   const [authError, setAuthError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [booting, setBooting] = useState(Boolean(loadSession().token));
+  const verificationRequestRef = useRef("");
 
   useEffect(() => {
     if (session.token) {
@@ -134,17 +177,132 @@ function App() {
     }));
   };
 
+  const changeAuthMode = (mode) => {
+    if (mode !== "reset" && resetToken) {
+      setResetToken("");
+      setQueryTokenInUrl(RESET_TOKEN_PARAM, "");
+    }
+
+    if (mode !== "verify" && verifyToken) {
+      setVerifyToken("");
+      setQueryTokenInUrl(VERIFY_TOKEN_PARAM, "");
+    }
+
+    setAuthMode(mode);
+    setAuthError("");
+    setAuthNotice("");
+  };
+
+  useEffect(() => {
+    if (authMode !== "verify" || !verifyToken) return undefined;
+    if (verificationRequestRef.current === verifyToken) return undefined;
+
+    verificationRequestRef.current = verifyToken;
+
+    const verifyEmail = async () => {
+      setAuthLoading(true);
+      setAuthError("");
+      setAuthNotice("");
+
+      try {
+        const response = await api.verifyEmail({ token: verifyToken });
+        setVerifyToken("");
+        setQueryTokenInUrl(VERIFY_TOKEN_PARAM, "");
+        setAuthMode("login");
+        setAuthNotice(response.message);
+      } catch (error) {
+        setAuthError(error.message);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    verifyEmail();
+
+    return undefined;
+  }, [authMode, verifyToken]);
+
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
     setAuthLoading(true);
     setAuthError("");
+    setAuthNotice("");
 
     try {
+      if (authMode === "forgot") {
+        const response = await api.requestPasswordReset(authForms.forgot);
+        setAuthNotice(response.message);
+        setAuthForms((current) => ({
+          ...current,
+          login: {
+            ...current.login,
+            email: current.forgot.email,
+          },
+          forgot: initialAuthForms.forgot,
+        }));
+        return;
+      }
+
+      if (authMode === "resend") {
+        const response = await api.resendVerification(authForms.resend);
+        setAuthNotice(response.message);
+        setAuthForms((current) => ({
+          ...current,
+          login: {
+            ...current.login,
+            email: current.resend.email,
+          },
+          resend: initialAuthForms.resend,
+        }));
+        setAuthMode("login");
+        return;
+      }
+
+      if (authMode === "reset") {
+        if (!resetToken) {
+          throw new Error("This password reset link is missing or invalid.");
+        }
+
+        if (authForms.reset.password !== authForms.reset.confirmPassword) {
+          throw new Error("Passwords do not match.");
+        }
+
+        const response = await api.resetPassword({
+          token: resetToken,
+          password: authForms.reset.password,
+        });
+
+        setResetToken("");
+        setQueryTokenInUrl(RESET_TOKEN_PARAM, "");
+        setAuthForms((current) => ({
+          ...current,
+          reset: initialAuthForms.reset,
+        }));
+        setAuthMode("login");
+        setAuthNotice(response.message);
+        return;
+      }
+
       const payload = authForms[authMode];
       const response =
         authMode === "register"
           ? await api.register(payload)
           : await api.login(payload);
+
+      if (authMode === "register" && !response.token) {
+        setAuthForms((current) => ({
+          ...initialAuthForms,
+          login: {
+            ...initialAuthForms.login,
+            email: current.register.email,
+          },
+        }));
+        setAuthMode("login");
+        setAuthNotice(
+          response.message || "Check your email to verify your account."
+        );
+        return;
+      }
 
       setSession({
         token: response.token,
@@ -178,8 +336,11 @@ function App() {
         authForms={authForms}
         authLoading={authLoading}
         authMode={authMode}
+        authNotice={authNotice}
+        hasResetToken={Boolean(resetToken)}
+        hasVerifyToken={Boolean(verifyToken)}
         onSubmit={handleAuthSubmit}
-        setAuthMode={setAuthMode}
+        setAuthMode={changeAuthMode}
         updateAuthField={updateAuthField}
       />
     );
@@ -193,10 +354,57 @@ function AuthScreen({
   authForms,
   authLoading,
   authMode,
+  authNotice,
+  hasResetToken,
+  hasVerifyToken,
   onSubmit,
   setAuthMode,
   updateAuthField,
 }) {
+  const isRegister = authMode === "register";
+  const isLogin = authMode === "login";
+  const isForgot = authMode === "forgot";
+  const isReset = authMode === "reset";
+  const isResend = authMode === "resend";
+  const isVerify = authMode === "verify";
+  const showTabs = isRegister || isLogin;
+
+  const headerTitle = isRegister
+    ? "Create account"
+    : isLogin
+      ? "Log in"
+      : isForgot
+        ? "Reset your password"
+        : isResend
+          ? "Resend verification"
+          : isVerify
+            ? "Verifying email"
+            : "Choose a new password";
+
+  const headerCopy = isRegister
+    ? "Start with a verified resume workspace."
+    : isLogin
+      ? "Open your saved dashboard."
+      : isForgot
+        ? "Enter your email and we’ll send a reset link."
+        : isResend
+          ? "Enter your email and we’ll send a fresh verification link."
+          : isVerify
+            ? "We’re checking the verification link from your email."
+            : "Set a new password for your account.";
+
+  const submitLabel = authLoading
+    ? "Please wait..."
+    : isRegister
+      ? "Create account"
+      : isLogin
+        ? "Login"
+        : isForgot
+          ? "Send reset email"
+          : isResend
+            ? "Send verification email"
+            : "Save new password";
+
   return (
     <div className="auth-layout">
       <section className="auth-card-shell">
@@ -219,34 +427,40 @@ function AuthScreen({
             <span className="info-pill">Version history</span>
           </div>
 
-          <div className="tab-row">
+          {showTabs ? (
+            <div className="tab-row">
+              <button
+                className={isRegister ? "tab active" : "tab"}
+                type="button"
+                onClick={() => setAuthMode("register")}
+              >
+                Register
+              </button>
+              <button
+                className={isLogin ? "tab active" : "tab"}
+                type="button"
+                onClick={() => setAuthMode("login")}
+              >
+                Login
+              </button>
+            </div>
+          ) : (
             <button
-              className={authMode === "register" ? "tab active" : "tab"}
-              type="button"
-              onClick={() => setAuthMode("register")}
-            >
-              Register
-            </button>
-            <button
-              className={authMode === "login" ? "tab active" : "tab"}
+              className="link-button auth-back-link"
               type="button"
               onClick={() => setAuthMode("login")}
             >
-              Login
+              Back to login
             </button>
-          </div>
+          )}
 
           <div className="auth-header">
-            <h2>{authMode === "register" ? "Create account" : "Log in"}</h2>
-            <p>
-              {authMode === "register"
-                ? "Start a clean resume workspace."
-                : "Open your saved dashboard."}
-            </p>
+            <h2>{headerTitle}</h2>
+            <p>{headerCopy}</p>
           </div>
 
           <form className="auth-form" onSubmit={onSubmit}>
-            {authMode === "register" ? (
+            {isRegister ? (
               <label className="field">
                 <span>Full name<span className="required-star">*</span></span>
                 <input
@@ -260,40 +474,120 @@ function AuthScreen({
               </label>
             ) : null}
 
-            <label className="field">
-              <span>Email<span className="required-star">*</span></span>
-              <input
-                type="email"
-                value={authForms[authMode].email}
-                onChange={(event) => updateAuthField(authMode, "email", event.target.value)}
-                placeholder="knight@ucf.edu"
-                required
-              />
-            </label>
+            {isReset ? (
+              <>
+                <label className="field">
+                  <span>New password<span className="required-star">*</span></span>
+                  <input
+                    type="password"
+                    value={authForms.reset.password}
+                    onChange={(event) =>
+                      updateAuthField("reset", "password", event.target.value)
+                    }
+                    placeholder="Minimum 6 characters"
+                    minLength={6}
+                    required
+                  />
+                </label>
 
-            <label className="field">
-              <span>Password<span className="required-star">*</span></span>
-              <input
-                type="password"
-                value={authForms[authMode].password}
-                onChange={(event) =>
-                  updateAuthField(authMode, "password", event.target.value)
-                }
-                placeholder="Minimum 6 characters"
-                minLength={6}
-                required
-              />
-            </label>
+                <label className="field">
+                  <span>Confirm password<span className="required-star">*</span></span>
+                  <input
+                    type="password"
+                    value={authForms.reset.confirmPassword}
+                    onChange={(event) =>
+                      updateAuthField("reset", "confirmPassword", event.target.value)
+                    }
+                    placeholder="Re-enter your password"
+                    minLength={6}
+                    required
+                  />
+                </label>
+
+                {!hasResetToken ? (
+                  <p className="auth-helper-copy">
+                    This reset link is missing its token. Request a new email to continue.
+                  </p>
+                ) : null}
+              </>
+            ) : isVerify ? (
+              <p className="auth-helper-copy">
+                {hasVerifyToken
+                  ? "This will finish automatically."
+                  : "This verification link is missing its token. Request a new email to continue."}
+              </p>
+            ) : (
+              <>
+                <label className="field">
+                  <span>Email<span className="required-star">*</span></span>
+                  <input
+                    type="email"
+                    value={authForms[authMode].email}
+                    onChange={(event) =>
+                      updateAuthField(authMode, "email", event.target.value)
+                    }
+                    placeholder="knight@ucf.edu"
+                    required
+                  />
+                </label>
+
+                {isForgot || isResend ? (
+                  <p className="auth-helper-copy">
+                    {isForgot
+                      ? "If the address exists in the system, we'll send a one-time reset link there."
+                      : "If the account still needs verification, we'll send a fresh link there."}
+                  </p>
+                ) : (
+                  <>
+                    <label className="field">
+                      <span>Password<span className="required-star">*</span></span>
+                      <input
+                        type="password"
+                        value={authForms[authMode].password}
+                        onChange={(event) =>
+                          updateAuthField(authMode, "password", event.target.value)
+                        }
+                        placeholder="Minimum 6 characters"
+                        minLength={6}
+                        required
+                      />
+                    </label>
+
+                    {isLogin ? (
+                      <div className="auth-helper-row auth-helper-row-split">
+                        <button
+                          className="link-button"
+                          type="button"
+                          onClick={() => setAuthMode("forgot")}
+                        >
+                          Forgot password?
+                        </button>
+                        <button
+                          className="link-button"
+                          type="button"
+                          onClick={() => setAuthMode("resend")}
+                        >
+                          Resend verification?
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </>
+            )}
+
+            {authNotice ? <p className="banner success">{authNotice}</p> : null}
 
             {authError ? <p className="banner error">{authError}</p> : null}
 
-            <button className="primary-button auth-submit" disabled={authLoading}>
-              {authLoading
-                ? "Please wait..."
-                : authMode === "register"
-                  ? "Create account"
-                  : "Login"}
-            </button>
+            {isVerify ? null : (
+              <button
+                className="primary-button auth-submit"
+                disabled={authLoading || (isReset && !hasResetToken)}
+              >
+                {submitLabel}
+              </button>
+            )}
           </form>
         </div>
       </section>
@@ -319,9 +613,15 @@ function Dashboard({ session, onLogout }) {
   const [highlightResumeId, setHighlightResumeId] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [detailRefresh, setDetailRefresh] = useState(0);
+  const [reviewTab, setReviewTab] = useState("suggestions");
+  const [jobMatches, setJobMatches] = useState([]);
+  const [jobMatchesResumeId, setJobMatchesResumeId] = useState(null);
+  const [loadingJobMatches, setLoadingJobMatches] = useState(false);
+  const [jobMatchPhase, setJobMatchPhase] = useState("idle");
   const fileInputRef = useRef(null);
   const previewRef = useRef("");
   const suggestionsRef = useRef(null);
+  const jobMatchRequestRef = useRef(0);
   const token = session.token;
 
   const replacePreview = (nextUrl) => {
@@ -341,6 +641,14 @@ function Dashboard({ session, onLogout }) {
     };
   }, []);
 
+  useEffect(() => {
+    setJobMatches([]);
+    setJobMatchesResumeId(null);
+    setLoadingJobMatches(false);
+    setJobMatchPhase("idle");
+    jobMatchRequestRef.current += 1;
+  }, [selectedResumeId]);
+
   const handleAuthFailure = (error) => {
     if (error?.status === 401) {
       onLogout();
@@ -348,6 +656,47 @@ function Dashboard({ session, onLogout }) {
     }
 
     return false;
+  };
+
+  const loadJobMatches = async (
+    resumeId,
+    { force = false, resync = false } = {}
+  ) => {
+    if (!resumeId) return;
+    if (!force && jobMatchesResumeId === resumeId) return;
+
+    const requestId = jobMatchRequestRef.current + 1;
+    jobMatchRequestRef.current = requestId;
+
+    setLoadingJobMatches(true);
+    setJobMatchPhase(resync ? "syncing" : "matching");
+    setDashboardError("");
+
+    try {
+      if (resync) {
+        await api.syncJobs(token, { force: true });
+
+        if (jobMatchRequestRef.current !== requestId) return;
+      }
+
+      const matches = await api.matchJobs(token, resumeId);
+
+      if (jobMatchRequestRef.current !== requestId) return;
+
+      setJobMatches(matches);
+      setJobMatchesResumeId(resumeId);
+    } catch (error) {
+      if (jobMatchRequestRef.current !== requestId) return;
+
+      if (!handleAuthFailure(error)) {
+        setDashboardError(error.message);
+      }
+    } finally {
+      if (jobMatchRequestRef.current === requestId) {
+        setLoadingJobMatches(false);
+        setJobMatchPhase("idle");
+      }
+    }
   };
 
   const loadResumes = async () => {
@@ -446,6 +795,18 @@ function Dashboard({ session, onLogout }) {
       cancelled = true;
     };
   }, [selectedResumeId, detailRefresh, token]);
+
+  useEffect(() => {
+    if (reviewTab !== "jobs" || !selectedResumeId) {
+      return;
+    }
+
+    if (jobMatchesResumeId === selectedResumeId) {
+      return;
+    }
+
+    loadJobMatches(selectedResumeId);
+  }, [jobMatchesResumeId, reviewTab, selectedResumeId, token]);
 
   const activeAnalysis = useMemo(
     () =>
@@ -841,108 +1202,170 @@ function Dashboard({ session, onLogout }) {
           <div className="review-left">
             <div className="analysis-grid" ref={suggestionsRef}>
               <div className="panel suggestion-panel">
-                <div className="section-heading">
+                <div className="section-heading review-heading">
                   <div>
-                    <h3>AI suggestions</h3>
+                    <h3>{reviewTab === "suggestions" ? "AI suggestions" : "Job matches"}</h3>
                     <span>
-                      {activeAnalysis
-                        ? `${activeAnalysis.suggestions.length} recommendations`
-                        : "No analysis yet"}
+                      {reviewTab === "suggestions"
+                        ? activeAnalysis
+                          ? `${activeAnalysis.suggestions.length} recommendations`
+                          : "No analysis yet"
+                        : !selectedResumeId
+                          ? "Choose a resume first"
+                          : loadingJobMatches
+                            ? jobMatchPhase === "syncing"
+                              ? "Syncing listings and refreshing matches..."
+                              : "Finding matching roles..."
+                            : jobMatches.length > 0
+                              ? `${jobMatches.length} roles found`
+                              : "No matches yet"}
                     </span>
                   </div>
+
+                  {reviewTab === "jobs" && selectedResumeId ? (
+                    <button
+                      className="ghost-button review-refresh"
+                      type="button"
+                      onClick={() =>
+                        loadJobMatches(selectedResumeId, {
+                          force: true,
+                          resync: true,
+                        })
+                      }
+                      disabled={loadingJobMatches}
+                    >
+                      {loadingJobMatches && jobMatchPhase === "syncing"
+                        ? "Syncing..."
+                        : loadingJobMatches
+                          ? "Refreshing..."
+                          : "Refresh jobs"}
+                    </button>
+                  ) : null}
                 </div>
 
-                {analysisRecords.length > 0 ? (
-                  <div className="analysis-history">
-                    {analysisRecords.map((record) => (
-                      <button
-                        key={record._id}
-                        type="button"
-                        className={
-                          record._id === activeAnalysis?._id
-                            ? "history-chip active"
-                            : "history-chip"
-                        }
-                        onClick={() => handleAnalysisClick(record)}
-                      >
-                        <strong>{formatPercent(record.overallScore)}</strong>
-                        <span>{formatDate(record.createdAt)}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+                <div className="review-tab-row">
+                  <button
+                    className={reviewTab === "suggestions" ? "tab active" : "tab"}
+                    type="button"
+                    onClick={() => setReviewTab("suggestions")}
+                  >
+                    Suggestions
+                  </button>
+                  <button
+                    className={reviewTab === "jobs" ? "tab active" : "tab"}
+                    type="button"
+                    onClick={() => setReviewTab("jobs")}
+                  >
+                    Job matches
+                  </button>
+                </div>
 
-                {activeAnalysis ? (
+                {reviewTab === "suggestions" ? (
                   <>
-                    {activeAnalysis.roleMatches && activeAnalysis.roleMatches.length > 0 ? (
-                      <div className="role-matches">
-                        <div className="role-matches-header">
-                          <strong>Best-fit roles</strong>
-                          {activeAnalysis.detectedField ? (
-                            <span className="detected-field-pill">{activeAnalysis.detectedField}</span>
-                          ) : null}
-                        </div>
-                        <div className="role-pill-list">
-                          {activeAnalysis.roleMatches.map((role, i) => (
-                            <span className="role-pill" key={i}>{role}</span>
-                          ))}
-                        </div>
+                    {analysisRecords.length > 0 ? (
+                      <div className="analysis-history">
+                        {analysisRecords.map((record) => (
+                          <button
+                            key={record._id}
+                            type="button"
+                            className={
+                              record._id === activeAnalysis?._id
+                                ? "history-chip active"
+                                : "history-chip"
+                            }
+                            onClick={() => handleAnalysisClick(record)}
+                          >
+                            <strong>{formatPercent(record.overallScore)}</strong>
+                            <span>{formatDate(record.createdAt)}</span>
+                          </button>
+                        ))}
                       </div>
                     ) : null}
 
-                    <div className="suggestion-list">
-                      {activeAnalysis.suggestions.map((suggestion) => (
-                        <article className="suggestion-card" key={suggestion.suggestionId}>
-                          <div className="suggestion-top">
-                            <span className={`category-pill ${suggestion.category}`}>
-                              {categoryLabel[suggestion.category]}
-                            </span>
-                            <span className={`score-pill ${scoreTone(suggestion.score)}`}>
-                              {formatPercent(suggestion.score)}
-                            </span>
-                          </div>
-
-                          <h4>{suggestion.message}</h4>
-
-                          {suggestion.beforeText ? (
-                            <div className="rewrite-block">
-                              <span>Before</span>
-                              <p>{suggestion.beforeText}</p>
+                    {activeAnalysis ? (
+                      <>
+                        {activeAnalysis.roleMatches && activeAnalysis.roleMatches.length > 0 ? (
+                          <div className="role-matches">
+                            <div className="role-matches-header">
+                              <strong>Best-fit roles</strong>
+                              {activeAnalysis.detectedField ? (
+                                <span className="detected-field-pill">
+                                  {activeAnalysis.detectedField}
+                                </span>
+                              ) : null}
                             </div>
-                          ) : null}
-
-                          {suggestion.suggestedText ? (
-                            <div className="rewrite-block accent">
-                              <span>Suggested rewrite</span>
-                              <p>{suggestion.suggestedText}</p>
+                            <div className="role-pill-list">
+                              {activeAnalysis.roleMatches.map((role, i) => (
+                                <span className="role-pill" key={i}>
+                                  {role}
+                                </span>
+                              ))}
                             </div>
-                          ) : null}
-
-                          <div className="suggestion-actions">
-                            <button
-                              className={
-                                suggestion.isApplied
-                                  ? "secondary-button active"
-                                  : "secondary-button"
-                              }
-                              type="button"
-                              onClick={() =>
-                                handleSuggestionUpdate(suggestion.suggestionId, {
-                                  isApplied: !suggestion.isApplied,
-                                })
-                              }
-                            >
-                              {suggestion.isApplied ? "Applied" : "Mark applied"}
-                            </button>
                           </div>
-                        </article>
-                      ))}
-                    </div>
+                        ) : null}
+
+                        <div className="suggestion-list">
+                          {activeAnalysis.suggestions.map((suggestion) => (
+                            <article className="suggestion-card" key={suggestion.suggestionId}>
+                              <div className="suggestion-top">
+                                <span className={`category-pill ${suggestion.category}`}>
+                                  {categoryLabel[suggestion.category]}
+                                </span>
+                                <span className={`score-pill ${scoreTone(suggestion.score)}`}>
+                                  {formatPercent(suggestion.score)}
+                                </span>
+                              </div>
+
+                              <h4>{suggestion.message}</h4>
+
+                              {suggestion.beforeText ? (
+                                <div className="rewrite-block">
+                                  <span>Before</span>
+                                  <p>{suggestion.beforeText}</p>
+                                </div>
+                              ) : null}
+
+                              {suggestion.suggestedText ? (
+                                <div className="rewrite-block accent">
+                                  <span>Suggested rewrite</span>
+                                  <p>{suggestion.suggestedText}</p>
+                                </div>
+                              ) : null}
+
+                              <div className="suggestion-actions">
+                                <button
+                                  className={
+                                    suggestion.isApplied
+                                      ? "secondary-button active"
+                                      : "secondary-button"
+                                  }
+                                  type="button"
+                                  onClick={() =>
+                                    handleSuggestionUpdate(suggestion.suggestionId, {
+                                      isApplied: !suggestion.isApplied,
+                                    })
+                                  }
+                                >
+                                  {suggestion.isApplied ? "Applied" : "Mark applied"}
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <EmptyState
+                        body="Upload a resume and run the knight analysis to populate this board."
+                        title="No AI suggestions yet."
+                      />
+                    )}
                   </>
                 ) : (
-                  <EmptyState
-                    body="Upload a resume and run the knight analysis to populate this board."
-                    title="No AI suggestions yet."
+                  <JobMatchesPanel
+                    hasSelectedResume={Boolean(selectedResumeId)}
+                    jobMatches={jobMatches}
+                    jobMatchPhase={jobMatchPhase}
+                    loadingJobMatches={loadingJobMatches}
                   />
                 )}
               </div>
@@ -1010,6 +1433,113 @@ function EmptyState({ body, title }) {
     <div className="empty-panel">
       <p>{title}</p>
       {body ? <span>{body}</span> : null}
+    </div>
+  );
+}
+
+function JobMatchesPanel({
+  hasSelectedResume,
+  jobMatches,
+  jobMatchPhase,
+  loadingJobMatches,
+}) {
+  if (!hasSelectedResume) {
+    return (
+      <EmptyState
+        body="Choose a resume from the vault to score it against the available jobs."
+        title="Select a resume to unlock job matches."
+      />
+    );
+  }
+
+  if (loadingJobMatches) {
+    return (
+      <EmptyState
+        body={
+          jobMatchPhase === "syncing"
+            ? "Refreshing the job feed, then recomputing the best matches for this resume."
+            : "Comparing this resume against the jobs already synced into the app."
+        }
+        title={
+          jobMatchPhase === "syncing"
+            ? "Syncing jobs and finding matches..."
+            : "Finding matching roles..."
+        }
+      />
+    );
+  }
+
+  if (jobMatches.length === 0) {
+    return (
+      <EmptyState
+        body="No roles cleared the current match threshold for this resume."
+        title="No job matches found yet."
+      />
+    );
+  }
+
+  return (
+    <div className="job-match-list">
+      {jobMatches.map((match, index) => {
+        const job = match.job || {};
+        const jobKey =
+          job._id || job.externalJobId || `${job.company}-${job.title}-${index}`;
+        const topSkills = Array.isArray(job.requiredSkills)
+          ? job.requiredSkills.slice(0, 6)
+          : [];
+
+        return (
+          <article className="job-match-card" key={jobKey}>
+            <div className="job-match-top">
+              <div className="job-match-copy">
+                <span className="job-match-company">{job.company || "Unknown company"}</span>
+                <h4>{job.title || "Untitled role"}</h4>
+              </div>
+
+              <span className={`score-pill ${scoreTone(match.matchScore)}`}>
+                {formatPercent(match.matchScore)} match
+              </span>
+            </div>
+
+            {job.location || job.source ? (
+              <div className="job-meta-row">
+                {job.location ? <span className="job-meta-chip">{job.location}</span> : null}
+                {job.source ? <span className="job-meta-chip">{job.source}</span> : null}
+              </div>
+            ) : null}
+
+            {job.description ? <p className="job-description">{job.description}</p> : null}
+
+            {topSkills.length > 0 ? (
+              <div className="job-skill-list">
+                {topSkills.map((skill) => (
+                  <span
+                    className="job-skill-pill"
+                    key={`${jobKey}-${skill.name || "skill"}`}
+                  >
+                    {skill.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="job-card-actions">
+              {job.jobUrl ? (
+                <a
+                  className="primary-button job-link-button"
+                  href={job.jobUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open listing
+                </a>
+              ) : (
+                <span className="job-link-missing">Link unavailable</span>
+              )}
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }

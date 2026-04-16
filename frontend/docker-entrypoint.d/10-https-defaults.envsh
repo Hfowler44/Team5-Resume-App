@@ -1,0 +1,4 @@
+#!/bin/sh
+
+export NGINX_SERVER_NAME="${NGINX_SERVER_NAME:-localhost}"
+export CERTBOT_WEBROOT="${CERTBOT_WEBROOT:-/var/www/certbot}"

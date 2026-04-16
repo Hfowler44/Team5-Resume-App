@@ -72,6 +72,46 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  requestPasswordReset(payload) {
+    return request("/auth/forgot-password", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+  resetPassword(payload) {
+    return request("/auth/reset-password", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+  verifyEmail(payload) {
+    return request("/auth/verify-email", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+  resendVerification(payload) {
+    return request("/auth/resend-verification", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
   getProfile(token) {
     return request("/users/me", {
       headers: authHeaders(token, jsonHeaders),
@@ -129,6 +169,20 @@ export const api = {
   },
   analyzeResume(token, resumeId) {
     return request(`/resumes/${resumeId}/analyze`, {
+      method: "POST",
+      headers: authHeaders(token, jsonHeaders),
+    });
+  },
+  syncJobs(token, options = {}) {
+    const query = options.force ? "?force=true" : "";
+
+    return request(`/jobs/sync${query}`, {
+      method: "POST",
+      headers: authHeaders(token, jsonHeaders),
+    });
+  },
+  matchJobs(token, resumeId) {
+    return request(`/jobs/match/${resumeId}`, {
       method: "POST",
       headers: authHeaders(token, jsonHeaders),
     });

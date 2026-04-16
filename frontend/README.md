@@ -23,3 +23,21 @@ docker compose up --build -d
 ```
 
 Open `http://localhost:3000`.
+
+The Docker image also exposes HTTPS on port `443`. Without Certbot settings it
+starts with a short-lived self-signed certificate so nginx can serve HTTPS
+immediately.
+
+For production Let's Encrypt certificates, set these values in the repository
+root `.env` before running `docker compose up --build -d`:
+
+```bash
+FRONTEND_PORT=80
+FRONTEND_HTTPS_PORT=443
+FRONTEND_DOMAIN=resume.example.com
+CERTBOT_ENABLE=true
+CERTBOT_EMAIL=admin@example.com
+```
+
+The domain must point to the Docker host, and public ports `80` and `443` must
+be reachable. Use `CERTBOT_STAGING=true` while testing certificate issuance.

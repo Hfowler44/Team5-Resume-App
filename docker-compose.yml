@@ -5,8 +5,18 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - api
+    environment:
+      NGINX_SERVER_NAME: ${FRONTEND_DOMAIN:-localhost}
+      CERTBOT_ENABLE: ${CERTBOT_ENABLE:-false}
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-}
+      CERTBOT_STAGING: ${CERTBOT_STAGING:-false}
+      CERTBOT_STARTUP_DELAY_SECONDS: ${CERTBOT_STARTUP_DELAY_SECONDS:-10}
     ports:
       - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_HTTPS_PORT:-443}:443"
+    volumes:
+      - frontend_letsencrypt:/etc/letsencrypt
+      - frontend_letsencrypt_lib:/var/lib/letsencrypt
     restart: unless-stopped
 
   api:
@@ -58,3 +68,5 @@ services:
 
 volumes:
   mongo_data:
+  frontend_letsencrypt:
+  frontend_letsencrypt_lib:

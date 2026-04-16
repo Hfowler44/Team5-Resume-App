@@ -45,6 +45,8 @@ beforeEach(() => {
   process.env.SMTP_PASS = "test-password";
   delete process.env.SMTP_FROM;
   delete process.env.PASSWORD_RESET_URL;
+  delete process.env.EMAIL_VERIFICATION_URL;
+  delete process.env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES;
 });
 
 afterAll(async () => {
@@ -81,6 +83,34 @@ const loginUser = (overrides = {}) =>
       ...overrides,
     });
 
+const getLastEmailToken = (paramName) => {
+  const mail = mockSendMail.mock.calls[mockSendMail.mock.calls.length - 1][0];
+  const link = mail.text.match(/https?:\/\/\S+/)?.[0];
+  return new URL(link).searchParams.get(paramName);
+};
+
+const verifyLastRegisteredUser = () =>
+  request(app)
+    .post("/api/auth/verify-email")
+    .send({ token: getLastEmailToken("verify") });
+
+const registerVerifiedUser = async (overrides = {}) => {
+  const registerRes = await registerUser(overrides);
+  expect(registerRes.status).toBe(201);
+
+  const verifyRes = await verifyLastRegisteredUser();
+  expect(verifyRes.status).toBe(200);
+
+  return registerRes;
+};
+
+const loginVerifiedUser = async (overrides = {}) => {
+  await registerVerifiedUser(overrides);
+  const loginRes = await loginUser(overrides);
+  expect(loginRes.status).toBe(200);
+  return loginRes;
+};
+
 // ---------- health ----------
 
 describe("GET /", () => {
@@ -103,11 +133,20 @@ describe("GET /api/health", () => {
 // ---------- auth ----------
 
 describe("Auth routes", () => {
-  it("registers a new user and returns a JWT", async () => {
+  it("registers a new user and sends a verification email", async () => {
     const res = await registerUser();
     expect(res.status).toBe(201);
-    expect(res.body.token).toBeDefined();
+    expect(res.body.token).toBeUndefined();
+    expect(res.body.message).toContain("verify your account");
     expect(res.body.user.email).toBe("test@example.com");
+    expect(res.body.user.emailVerified).toBe(false);
+    expect(mockCreateTransport).toHaveBeenCalledTimes(1);
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+
+    const mail = mockSendMail.mock.calls[0][0];
+    const token = getLastEmailToken("verify");
+    expect(mail.to).toBe("test@example.com");
+    expect(token).toBeTruthy();
   });
 
   it("rejects duplicate email", async () => {
@@ -123,21 +162,81 @@ describe("Auth routes", () => {
     expect(res.status).toBe(400);
   });
 
+  it("fails registration when SMTP is not configured", async () => {
+    delete process.env.SMTP_HOST;
+
+    const res = await registerUser();
+    expect(res.status).toBe(503);
+    expect(res.body.error).toContain("SMTP is not configured");
+    expect(mockSendMail).not.toHaveBeenCalled();
+
+    const loginRes = await loginUser();
+    expect(loginRes.status).toBe(401);
+  });
+
   it("logs in with valid credentials", async () => {
-    await registerUser();
+    await registerVerifiedUser();
     const res = await loginUser();
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
+    expect(res.body.user.emailVerified).toBe(true);
+  });
+
+  it("blocks login until the email address is verified", async () => {
+    await registerUser();
+    const res = await loginUser();
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("EMAIL_NOT_VERIFIED");
   });
 
   it("rejects login with wrong password", async () => {
-    await registerUser();
+    await registerVerifiedUser();
     const res = await loginUser({ password: "wrong" });
     expect(res.status).toBe(401);
   });
 
-  it("sends a password reset email and accepts the new password", async () => {
+  it("verifies email with the registration link", async () => {
     await registerUser();
+
+    const verifyRes = await verifyLastRegisteredUser();
+    expect(verifyRes.status).toBe(200);
+    expect(verifyRes.body.message).toContain("Email verified");
+
+    const loginRes = await loginUser();
+    expect(loginRes.status).toBe(200);
+  });
+
+  it("resends verification email for unverified accounts", async () => {
+    await registerUser();
+    mockSendMail.mockClear();
+    mockCreateTransport.mockClear();
+
+    const res = await request(app)
+      .post("/api/auth/resend-verification")
+      .set("Origin", "http://localhost:3000")
+      .send({ email: "test@example.com" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toContain("verification email");
+    expect(mockCreateTransport).toHaveBeenCalledTimes(1);
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+    expect(getLastEmailToken("verify")).toBeTruthy();
+  });
+
+  it("returns the same resend verification response for unknown email", async () => {
+    const res = await request(app)
+      .post("/api/auth/resend-verification")
+      .send({ email: "missing@example.com" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toContain("verification email");
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  it("sends a password reset email and accepts the new password", async () => {
+    await registerVerifiedUser();
+    mockSendMail.mockClear();
+    mockCreateTransport.mockClear();
 
     const forgotRes = await request(app)
       .post("/api/auth/forgot-password")
@@ -150,8 +249,7 @@ describe("Auth routes", () => {
     expect(mockSendMail).toHaveBeenCalledTimes(1);
 
     const mail = mockSendMail.mock.calls[0][0];
-    const resetUrl = mail.text.match(/https?:\/\/\S+/)?.[0];
-    const token = new URL(resetUrl).searchParams.get("reset");
+    const token = getLastEmailToken("reset");
 
     expect(mail.to).toBe("test@example.com");
     expect(token).toBeTruthy();
@@ -178,7 +276,9 @@ describe("Auth routes", () => {
   });
 
   it("fails password reset requests when SMTP is not configured", async () => {
-    await registerUser();
+    await registerVerifiedUser();
+    mockSendMail.mockClear();
+    mockCreateTransport.mockClear();
     delete process.env.SMTP_HOST;
 
     const res = await request(app)
@@ -195,20 +295,21 @@ describe("Auth routes", () => {
 
 describe("User routes", () => {
   it("GET /api/users/me returns profile", async () => {
-    const reg = await registerUser();
+    const login = await loginVerifiedUser();
     const res = await request(app)
       .get("/api/users/me")
-      .set("Authorization", `Bearer ${reg.body.token}`);
+      .set("Authorization", `Bearer ${login.body.token}`);
     expect(res.status).toBe(200);
     expect(res.body.fullName).toBe("Test User");
     expect(res.body.passwordHash).toBeUndefined();
+    expect(res.body.emailVerificationTokenHash).toBeUndefined();
   });
 
   it("PUT /api/users/me updates name", async () => {
-    const reg = await registerUser();
+    const login = await loginVerifiedUser();
     const res = await request(app)
       .put("/api/users/me")
-      .set("Authorization", `Bearer ${reg.body.token}`)
+      .set("Authorization", `Bearer ${login.body.token}`)
       .send({ fullName: "New Name" });
     expect(res.status).toBe(200);
     expect(res.body.fullName).toBe("New Name");
@@ -226,8 +327,8 @@ describe("Resume routes", () => {
   let token;
 
   beforeEach(async () => {
-    const reg = await registerUser();
-    token = reg.body.token;
+    const login = await loginVerifiedUser();
+    token = login.body.token;
   });
 
   it("GET /api/resumes returns empty array initially", async () => {
@@ -294,8 +395,8 @@ describe("Job sync routes", () => {
   let token;
 
   beforeEach(async () => {
-    const reg = await registerUser({ email: "jobs@example.com" });
-    token = reg.body.token;
+    const login = await loginVerifiedUser({ email: "jobs@example.com" });
+    token = login.body.token;
   });
 
   it("POST /api/jobs/sync imports jobs from the upstream feed", async () => {

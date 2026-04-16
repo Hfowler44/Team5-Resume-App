@@ -5,7 +5,9 @@ const User = require("../models/User");
 // GET /api/users/me
 router.get("/me", auth, async (req, res, next) => {
   try {
-    const user = await User.findById(req.userId).select("-passwordHash");
+    const user = await User.findById(req.userId).select(
+      "-passwordHash -passwordResetTokenHash -passwordResetExpiresAt -emailVerificationTokenHash -emailVerificationExpiresAt"
+    );
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);
   } catch (err) {
@@ -25,7 +27,9 @@ router.put("/me", auth, async (req, res, next) => {
       req.userId,
       { fullName: fullName.trim() },
       { returnDocument: "after" }
-    ).select("-passwordHash");
+    ).select(
+      "-passwordHash -passwordResetTokenHash -passwordResetExpiresAt -emailVerificationTokenHash -emailVerificationExpiresAt"
+    );
 
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json(user);

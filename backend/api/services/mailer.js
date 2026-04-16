@@ -50,18 +50,25 @@ const ensureSmtpConfigured = () => {
   return config;
 };
 
-const sendPasswordResetEmail = async ({ to, fullName, resetUrl }) => {
+const createTransporter = () => {
   const config = ensureSmtpConfigured();
-  const transporter = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: {
-      user: config.user,
-      pass: config.pass,
-    },
-  });
 
+  return {
+    config,
+    transporter: nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: {
+        user: config.user,
+        pass: config.pass,
+      },
+    }),
+  };
+};
+
+const sendPasswordResetEmail = async ({ to, fullName, resetUrl }) => {
+  const { config, transporter } = createTransporter();
   const recipientName = fullName || "there";
 
   return transporter.sendMail({
@@ -86,7 +93,34 @@ const sendPasswordResetEmail = async ({ to, fullName, resetUrl }) => {
   });
 };
 
+const sendEmailVerificationEmail = async ({ to, fullName, verificationUrl }) => {
+  const { config, transporter } = createTransporter();
+  const recipientName = fullName || "there";
+
+  return transporter.sendMail({
+    from: config.from,
+    to,
+    subject: "Verify your Knight My Resume email",
+    text: [
+      `Hi ${recipientName},`,
+      "",
+      "Welcome to Knight My Resume.",
+      "Verify your email address before logging in:",
+      verificationUrl,
+      "",
+      "If you did not create this account, you can ignore this email.",
+    ].join("\n"),
+    html: `
+      <p>Hi ${recipientName},</p>
+      <p>Welcome to Knight My Resume.</p>
+      <p><a href="${verificationUrl}">Verify your email address</a> before logging in.</p>
+      <p>If you did not create this account, you can ignore this email.</p>
+    `,
+  });
+};
+
 module.exports = {
   ensureSmtpConfigured,
+  sendEmailVerificationEmail,
   sendPasswordResetEmail,
 };

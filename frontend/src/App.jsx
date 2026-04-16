@@ -4,6 +4,7 @@ import knightMark from "./assets/knight-mark.svg";
 
 const SESSION_KEY = "knight-my-resume-session";
 const RESET_TOKEN_PARAM = "reset";
+const VERIFY_TOKEN_PARAM = "verify";
 
 const initialSession = {
   token: "",
@@ -21,6 +22,9 @@ const initialAuthForms = {
     password: "",
   },
   forgot: {
+    email: "",
+  },
+  resend: {
     email: "",
   },
   reset: {
@@ -52,20 +56,20 @@ const loadSession = () => {
   }
 };
 
-const loadResetToken = () => {
+const loadQueryToken = (paramName) => {
   if (typeof window === "undefined") return "";
-  return new URLSearchParams(window.location.search).get(RESET_TOKEN_PARAM) || "";
+  return new URLSearchParams(window.location.search).get(paramName) || "";
 };
 
-const setResetTokenInUrl = (token) => {
+const setQueryTokenInUrl = (paramName, token) => {
   if (typeof window === "undefined") return;
 
   const url = new URL(window.location.href);
 
   if (token) {
-    url.searchParams.set(RESET_TOKEN_PARAM, token);
+    url.searchParams.set(paramName, token);
   } else {
-    url.searchParams.delete(RESET_TOKEN_PARAM);
+    url.searchParams.delete(paramName);
   }
 
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
@@ -102,15 +106,23 @@ const scoreTone = (value) => {
 
 function App() {
   const [session, setSession] = useState(loadSession);
-  const [resetToken, setResetToken] = useState(loadResetToken);
-  const [authMode, setAuthMode] = useState(() =>
-    loadResetToken() ? "reset" : "register"
+  const [resetToken, setResetToken] = useState(() =>
+    loadQueryToken(RESET_TOKEN_PARAM)
   );
+  const [verifyToken, setVerifyToken] = useState(() =>
+    loadQueryToken(VERIFY_TOKEN_PARAM)
+  );
+  const [authMode, setAuthMode] = useState(() => {
+    if (loadQueryToken(VERIFY_TOKEN_PARAM)) return "verify";
+    if (loadQueryToken(RESET_TOKEN_PARAM)) return "reset";
+    return "register";
+  });
   const [authForms, setAuthForms] = useState(initialAuthForms);
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [booting, setBooting] = useState(Boolean(loadSession().token));
+  const verificationRequestRef = useRef("");
 
   useEffect(() => {
     if (session.token) {
@@ -168,13 +180,47 @@ function App() {
   const changeAuthMode = (mode) => {
     if (mode !== "reset" && resetToken) {
       setResetToken("");
-      setResetTokenInUrl("");
+      setQueryTokenInUrl(RESET_TOKEN_PARAM, "");
+    }
+
+    if (mode !== "verify" && verifyToken) {
+      setVerifyToken("");
+      setQueryTokenInUrl(VERIFY_TOKEN_PARAM, "");
     }
 
     setAuthMode(mode);
     setAuthError("");
     setAuthNotice("");
   };
+
+  useEffect(() => {
+    if (authMode !== "verify" || !verifyToken) return undefined;
+    if (verificationRequestRef.current === verifyToken) return undefined;
+
+    verificationRequestRef.current = verifyToken;
+
+    const verifyEmail = async () => {
+      setAuthLoading(true);
+      setAuthError("");
+      setAuthNotice("");
+
+      try {
+        const response = await api.verifyEmail({ token: verifyToken });
+        setVerifyToken("");
+        setQueryTokenInUrl(VERIFY_TOKEN_PARAM, "");
+        setAuthMode("login");
+        setAuthNotice(response.message);
+      } catch (error) {
+        setAuthError(error.message);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    verifyEmail();
+
+    return undefined;
+  }, [authMode, verifyToken]);
 
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
@@ -197,6 +243,21 @@ function App() {
         return;
       }
 
+      if (authMode === "resend") {
+        const response = await api.resendVerification(authForms.resend);
+        setAuthNotice(response.message);
+        setAuthForms((current) => ({
+          ...current,
+          login: {
+            ...current.login,
+            email: current.resend.email,
+          },
+          resend: initialAuthForms.resend,
+        }));
+        setAuthMode("login");
+        return;
+      }
+
       if (authMode === "reset") {
         if (!resetToken) {
           throw new Error("This password reset link is missing or invalid.");
@@ -212,7 +273,7 @@ function App() {
         });
 
         setResetToken("");
-        setResetTokenInUrl("");
+        setQueryTokenInUrl(RESET_TOKEN_PARAM, "");
         setAuthForms((current) => ({
           ...current,
           reset: initialAuthForms.reset,
@@ -227,6 +288,21 @@ function App() {
         authMode === "register"
           ? await api.register(payload)
           : await api.login(payload);
+
+      if (authMode === "register" && !response.token) {
+        setAuthForms((current) => ({
+          ...initialAuthForms,
+          login: {
+            ...initialAuthForms.login,
+            email: current.register.email,
+          },
+        }));
+        setAuthMode("login");
+        setAuthNotice(
+          response.message || "Check your email to verify your account."
+        );
+        return;
+      }
 
       setSession({
         token: response.token,
@@ -262,6 +338,7 @@ function App() {
         authMode={authMode}
         authNotice={authNotice}
         hasResetToken={Boolean(resetToken)}
+        hasVerifyToken={Boolean(verifyToken)}
         onSubmit={handleAuthSubmit}
         setAuthMode={changeAuthMode}
         updateAuthField={updateAuthField}
@@ -279,6 +356,7 @@ function AuthScreen({
   authMode,
   authNotice,
   hasResetToken,
+  hasVerifyToken,
   onSubmit,
   setAuthMode,
   updateAuthField,
@@ -287,6 +365,8 @@ function AuthScreen({
   const isLogin = authMode === "login";
   const isForgot = authMode === "forgot";
   const isReset = authMode === "reset";
+  const isResend = authMode === "resend";
+  const isVerify = authMode === "verify";
   const showTabs = isRegister || isLogin;
 
   const headerTitle = isRegister
@@ -295,15 +375,23 @@ function AuthScreen({
       ? "Log in"
       : isForgot
         ? "Reset your password"
-        : "Choose a new password";
+        : isResend
+          ? "Resend verification"
+          : isVerify
+            ? "Verifying email"
+            : "Choose a new password";
 
   const headerCopy = isRegister
-    ? "Start a clean resume workspace."
+    ? "Start with a verified resume workspace."
     : isLogin
       ? "Open your saved dashboard."
       : isForgot
         ? "Enter your email and we’ll send a reset link."
-        : "Set a new password for your account.";
+        : isResend
+          ? "Enter your email and we’ll send a fresh verification link."
+          : isVerify
+            ? "We’re checking the verification link from your email."
+            : "Set a new password for your account.";
 
   const submitLabel = authLoading
     ? "Please wait..."
@@ -313,7 +401,9 @@ function AuthScreen({
         ? "Login"
         : isForgot
           ? "Send reset email"
-          : "Save new password";
+          : isResend
+            ? "Send verification email"
+            : "Save new password";
 
   return (
     <div className="auth-layout">
@@ -420,6 +510,12 @@ function AuthScreen({
                   </p>
                 ) : null}
               </>
+            ) : isVerify ? (
+              <p className="auth-helper-copy">
+                {hasVerifyToken
+                  ? "This will finish automatically."
+                  : "This verification link is missing its token. Request a new email to continue."}
+              </p>
             ) : (
               <>
                 <label className="field">
@@ -435,10 +531,11 @@ function AuthScreen({
                   />
                 </label>
 
-                {isForgot ? (
+                {isForgot || isResend ? (
                   <p className="auth-helper-copy">
-                    If the address exists in the system, we&apos;ll send a one-time reset
-                    link there.
+                    {isForgot
+                      ? "If the address exists in the system, we'll send a one-time reset link there."
+                      : "If the account still needs verification, we'll send a fresh link there."}
                   </p>
                 ) : (
                   <>
@@ -457,13 +554,20 @@ function AuthScreen({
                     </label>
 
                     {isLogin ? (
-                      <div className="auth-helper-row">
+                      <div className="auth-helper-row auth-helper-row-split">
                         <button
                           className="link-button"
                           type="button"
                           onClick={() => setAuthMode("forgot")}
                         >
                           Forgot password?
+                        </button>
+                        <button
+                          className="link-button"
+                          type="button"
+                          onClick={() => setAuthMode("resend")}
+                        >
+                          Resend verification?
                         </button>
                       </div>
                     ) : null}
@@ -476,12 +580,14 @@ function AuthScreen({
 
             {authError ? <p className="banner error">{authError}</p> : null}
 
-            <button
-              className="primary-button auth-submit"
-              disabled={authLoading || (isReset && !hasResetToken)}
-            >
-              {submitLabel}
-            </button>
+            {isVerify ? null : (
+              <button
+                className="primary-button auth-submit"
+                disabled={authLoading || (isReset && !hasResetToken)}
+              >
+                {submitLabel}
+              </button>
+            )}
           </form>
         </div>
       </section>

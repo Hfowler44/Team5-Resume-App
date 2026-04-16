@@ -20,7 +20,7 @@ This repo now includes a `docker-compose.yml` for the React frontend, API, and M
    ```
 2. Update `JWT_SECRET` and, if you want AI analysis enabled, set `GEMINI_API_KEY`.
    The default Flash model is `gemini-2.5-flash`, and you can override it with `GEMINI_MODEL`.
-   To enable password reset email, also fill in `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASS`.
+   To enable password reset and email verification, also fill in `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASS`.
    `SMTP_FROM` is optional if your SMTP user is already a valid sender address.
 3. Build and start the stack:
    ```bash

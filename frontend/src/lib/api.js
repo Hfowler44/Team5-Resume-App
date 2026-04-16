@@ -92,6 +92,26 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  verifyEmail(payload) {
+    return request("/auth/verify-email", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+  resendVerification(payload) {
+    return request("/auth/resend-verification", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
   getProfile(token) {
     return request("/users/me", {
       headers: authHeaders(token, jsonHeaders),

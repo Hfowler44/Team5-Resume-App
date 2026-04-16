@@ -49,6 +49,12 @@ ensureCollection("users", {
     fullName: { bsonType: "string" },
     email: { bsonType: "string"},
     passwordHash: { bsonType: "string" },
+    passwordResetTokenHash: { bsonType: ["string", "null"] },
+    passwordResetExpiresAt: { bsonType: ["date", "null"] },
+    emailVerified: { bsonType: "bool" },
+    emailVerifiedAt: { bsonType: ["date", "null"] },
+    emailVerificationTokenHash: { bsonType: ["string", "null"] },
+    emailVerificationExpiresAt: { bsonType: ["date", "null"] },
     role: { enum: ["user", "admin"] },
     accountStatus: { enum: ["active", "disabled"] },
     createdAt: { bsonType:"date" },
@@ -58,6 +64,7 @@ ensureCollection("users", {
 
 ensureIndex("users", { email: 1 }, { unique: true, name: "uniq_users_email" });
 ensureIndex("users", { accountStatus: 1, updatedAt: -1 }, { name:"users_status_updatedAt" });
+ensureIndex("users", { emailVerificationTokenHash: 1 }, { sparse: true, name: "users_email_verification_token" });
 
 //resumes
 ensureCollection("resumes", {

@@ -18,8 +18,9 @@ mkdir -p \
 
 use_live_certificate_if_available() {
   if [ -s "${LIVE_FULLCHAIN}" ] && [ -s "${LIVE_PRIVKEY}" ]; then
-    ln -sf "${LIVE_FULLCHAIN}" "${NGINX_FULLCHAIN}"
-    ln -sf "${LIVE_PRIVKEY}" "${NGINX_PRIVKEY}"
+    rm -f "${NGINX_FULLCHAIN}" "${NGINX_PRIVKEY}"
+    ln -s "${LIVE_FULLCHAIN}" "${NGINX_FULLCHAIN}"
+    ln -s "${LIVE_PRIVKEY}" "${NGINX_PRIVKEY}"
     return 0
   fi
 

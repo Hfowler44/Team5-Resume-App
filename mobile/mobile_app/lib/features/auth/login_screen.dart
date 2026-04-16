@@ -115,13 +115,28 @@ class _MainPageState extends State<MainPage> {
                     newMessageText = "";
                     changeText();
                     //
-                    final user = await AuthService.login(email,password);
+                    final response = await AuthService.login(email, password);
 
-                    if(user == null) {
-                      newMessageText = "Login Failed";
+                    if (response == null) {
+                      newMessageText = "Server error";
                       changeText();
                       return;
                     }
+
+                    if (response["error"] != null) {
+                      final error = response["error"].toString().toLowerCase();
+
+                      if (error.contains("verify")) {
+                        newMessageText = "Please verify your email";
+                      } else {
+                        newMessageText = response["error"];
+                      }
+
+                      changeText();
+                      return;
+                    }
+
+                    final user = User.fromJson(response);
                     GlobalData.userId = user.id;
                     GlobalData.fullName = user.fullName;
                     GlobalData.email = user.email;
@@ -130,7 +145,7 @@ class _MainPageState extends State<MainPage> {
                     Navigator.pushNamed(context, '/dashboard');
                   },
                   child: Text(
-                    'Do Login',
+                    'Login',
                     style: TextStyle(fontSize: 14),
                   ),
                 ),

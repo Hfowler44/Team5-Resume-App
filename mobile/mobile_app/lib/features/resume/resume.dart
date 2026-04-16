@@ -4,6 +4,8 @@ class Resume {
   final String fileUrl;
   final String status;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final Map<String, dynamic>? parsed;
 
   Resume({
     required this.id,
@@ -11,6 +13,8 @@ class Resume {
     required this.fileUrl,
     required this.status,
     this.createdAt,
+    this.updatedAt,
+    this.parsed,
   });
 
   factory Resume.fromJson(Map<String, dynamic> json) {
@@ -19,8 +23,11 @@ class Resume {
       fileName: json["fileName"] ?? "",
       fileUrl: json["fileUrl"] ?? "",
       status: json["status"] ?? "",
-      createdAt: json["createdAt"] != null
-        ? DateTime.parse(json["createdAt"]) : null,
+      createdAt: json["createdAt"]
+          != null ? DateTime.parse(json["createdAt"]) : null,
+      updatedAt: json["updatedAt"]
+          != null ? DateTime.parse(json["updatedAt"]) : null,
+      parsed: json["parsed"] is Map<String, dynamic> ? json["parsed"] : null,
     );
   }
 }

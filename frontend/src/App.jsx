@@ -918,7 +918,6 @@ function Dashboard({ session, onLogout }) {
     ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`
     : "";
   const shouldHighlightAnalysis = highlightResumeId === selectedResumeId;
-  const deletingSelectedResume = deletingResumeId === selectedResumeId;
   const activeJobMatchSearch = loadingJobMatches
     ? normalizedJobMatchSearch
     : jobMatchesSearch;
@@ -988,11 +987,11 @@ function Dashboard({ session, onLogout }) {
     }
   };
 
-  const handleDeleteResume = async () => {
-    if (!selectedResumeId || !selectedResume) return;
+  const handleDeleteResume = async (resume) => {
+    if (!resume?._id) return;
 
-    const resumeIdToDelete = selectedResumeId;
-    const fileName = selectedResume.fileName;
+    const resumeIdToDelete = resume._id;
+    const fileName = resume.fileName;
     const confirmed = window.confirm(
       `Delete ${fileName}? This removes the stored PDF, version history, and analysis records.`
     );
@@ -1151,22 +1150,39 @@ function Dashboard({ session, onLogout }) {
             ) : (
               <div className="resume-list">
                 {resumes.map((resume) => (
-                  <button
+                  <article
                     key={resume._id}
-                    type="button"
                     className={
                       resume._id === selectedResumeId
                         ? "resume-item active"
                         : "resume-item"
                     }
-                    onClick={() => setSelectedResumeId(resume._id)}
                   >
-                    <div>
-                      <strong>{resume.fileName}</strong>
-                      <span>{formatDate(resume.updatedAt)}</span>
+                    <button
+                      type="button"
+                      className="resume-item-select"
+                      onClick={() => setSelectedResumeId(resume._id)}
+                    >
+                      <div className="resume-item-copy">
+                        <strong>{resume.fileName}</strong>
+                        <span>{formatDate(resume.updatedAt)}</span>
+                      </div>
+                    </button>
+
+                    <div className="resume-item-actions">
+                      <span className={`status-pill ${resume.status}`}>{resume.status}</span>
+                      <button
+                        className="danger-button resume-item-delete"
+                        type="button"
+                        onClick={() => handleDeleteResume(resume)}
+                        disabled={deletingResumeId === resume._id}
+                      >
+                        {deletingResumeId === resume._id
+                          ? "Delete resume..."
+                          : "Delete resume"}
+                      </button>
                     </div>
-                    <span className={`status-pill ${resume.status}`}>{resume.status}</span>
-                  </button>
+                  </article>
                 ))}
               </div>
             )}
@@ -1189,15 +1205,6 @@ function Dashboard({ session, onLogout }) {
                       {selectedResume.status}
                     </span>
                   </div>
-
-                  <button
-                    className="danger-button summary-delete-button"
-                    type="button"
-                    onClick={handleDeleteResume}
-                    disabled={loadingDetail || deletingSelectedResume}
-                  >
-                    {deletingSelectedResume ? "Delete resume..." : "Delete resume"}
-                  </button>
                 </div>
 
                 <div className="briefing-grid">

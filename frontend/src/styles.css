@@ -645,17 +645,41 @@ a {
 
 .resume-item {
   width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.9rem;
   padding: 1rem;
   text-align: left;
 }
 
-.resume-item > div,
+.resume-item-select {
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  min-width: 0;
+}
+
+.resume-item-select:focus-visible {
+  outline: 2px solid rgba(201, 152, 0, 0.8);
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+
+.resume-item-copy,
 .summary-head strong {
   min-width: 0;
+}
+
+.resume-item-actions {
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: 0.6rem;
+}
+
+.resume-item-delete {
+  min-width: 8.75rem;
 }
 
 .resume-item strong,
@@ -737,11 +761,6 @@ a {
   font-size: 1.05rem;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-.summary-delete-button {
-  flex: 0 0 auto;
-  white-space: nowrap;
 }
 
 .briefing-grid {
@@ -1084,6 +1103,14 @@ a {
 
   .briefing-grid {
     grid-template-columns: 1fr;
+  }
+
+  .resume-item {
+    grid-template-columns: 1fr;
+  }
+
+  .resume-item-actions {
+    justify-items: start;
   }
 
   .resume-frame-wrapper {

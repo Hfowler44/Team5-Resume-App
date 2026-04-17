@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../analysis/analysis_service.dart';
@@ -20,9 +21,16 @@ class _ResumeDetailScreenState extends State<ResumeDetailScreen> {
   ResumeAnalysis? analysis;
   bool isLoading = true;
   bool isAnalyzing = false;
+  bool isLoadingJobMatches = false;
   List<ResumeVersion> versions = [];
   List<JobMatchResult> jobMatches = [];
   String? errorMessage;
+  String jobMatchSearch = '';
+  String loadedJobMatchSearch = '';
+  int _jobMatchRequestId = 0;
+  final TextEditingController _jobMatchSearchController =
+      TextEditingController();
+  Timer? _jobMatchSearchDebounce;
   late Resume currentResume;
 
   @override
@@ -32,9 +40,79 @@ class _ResumeDetailScreenState extends State<ResumeDetailScreen> {
     loadAnalysis();
   }
 
+  @override
+  void dispose() {
+    _jobMatchSearchDebounce?.cancel();
+    _jobMatchSearchController.dispose();
+    super.dispose();
+  }
+
+  Future<List<JobMatchResult>> _fetchJobMatches({
+    required String search,
+    bool recompute = false,
+  }) {
+    if (recompute) {
+      return JobMatchService.matchJobs(currentResume.id, search: search);
+    }
+
+    return JobMatchService.getJobMatches(currentResume.id, search: search);
+  }
+
+  Future<void> _searchJobMatches({required String search}) async {
+    final normalizedSearch = search.trim();
+    final requestId = ++_jobMatchRequestId;
+
+    setState(() {
+      isLoadingJobMatches = true;
+    });
+
+    List<JobMatchResult> nextMatches = [];
+    try {
+      nextMatches = await _fetchJobMatches(search: normalizedSearch);
+    } catch (e) {
+      print("JOB MATCH SEARCH ERROR: $e");
+    }
+
+    if (!mounted || requestId != _jobMatchRequestId) return;
+
+    setState(() {
+      jobMatches = nextMatches;
+      loadedJobMatchSearch = normalizedSearch;
+      isLoadingJobMatches = false;
+    });
+  }
+
+  void _handleJobMatchSearchChanged(String value) {
+    setState(() {
+      jobMatchSearch = value;
+    });
+
+    _jobMatchSearchDebounce?.cancel();
+    _jobMatchSearchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+
+      final normalizedSearch = value.trim();
+      if (normalizedSearch == loadedJobMatchSearch) return;
+
+      _searchJobMatches(search: normalizedSearch);
+    });
+  }
+
+  void _clearJobMatchSearch() {
+    _jobMatchSearchDebounce?.cancel();
+    _jobMatchSearchController.clear();
+
+    setState(() {
+      jobMatchSearch = '';
+    });
+
+    _searchJobMatches(search: '');
+  }
+
   Future<void> loadAnalysis() async {
     setState(() {
       isLoading = true;
+      isLoadingJobMatches = true;
       errorMessage = null;
     });
 
@@ -42,6 +120,8 @@ class _ResumeDetailScreenState extends State<ResumeDetailScreen> {
     List<ResumeVersion> versionResult = [];
     List<JobMatchResult> jobMatchResult = [];
     Resume? updatedResume;
+    final requestedJobMatchSearch = jobMatchSearch.trim();
+    final jobMatchRequestId = ++_jobMatchRequestId;
 
     try {
       analysisResult =
@@ -58,8 +138,10 @@ class _ResumeDetailScreenState extends State<ResumeDetailScreen> {
     }
 
     try {
-      jobMatchResult =
-      await JobMatchService.getJobMatches(currentResume.id);
+      jobMatchResult = await _fetchJobMatches(
+        search: requestedJobMatchSearch,
+        recompute: true,
+      );
     } catch (e) {
       print("JOB MATCH ERROR: $e");
     }
@@ -76,8 +158,12 @@ class _ResumeDetailScreenState extends State<ResumeDetailScreen> {
     setState(() {
       analysis = analysisResult;
       versions = versionResult;
-      jobMatches = jobMatchResult;
       currentResume = updatedResume ?? currentResume;
+      if (jobMatchRequestId == _jobMatchRequestId) {
+        jobMatches = jobMatchResult;
+        loadedJobMatchSearch = requestedJobMatchSearch;
+        isLoadingJobMatches = false;
+      }
       isLoading = false;
     });
   }
@@ -556,94 +642,192 @@ class _ResumeDetailScreenState extends State<ResumeDetailScreen> {
   }
 
   Widget _buildJobMatchesSection() {
+    final activeSearch = jobMatchSearch.trim();
+    final statusLabel = isLoadingJobMatches
+        ? activeSearch.isEmpty
+            ? "Finding matching roles..."
+            : 'Searching matches for "$activeSearch"...'
+        : jobMatches.isEmpty
+            ? activeSearch.isEmpty
+                ? "No matches yet"
+                : 'No roles match "$activeSearch"'
+            : activeSearch.isEmpty
+                ? "${jobMatches.length} roles found"
+                : '${jobMatches.length} roles found for "$activeSearch"';
+
     return _sectionCard(
       title: "Job Matches",
       icon: Icons.work_outline,
-      child: jobMatches.isEmpty
-          ? Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Text(
-          "No job matches returned yet.",
-          style: TextStyle(color: Colors.grey.shade700),
-        ),
-      )
-          : Column(
-        children: jobMatches.map((match) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: ListTile(
-              onTap: () {
-                final url = match.job.jobUrl;
-                if (url.isNotEmpty) {
-                  _copyToClipboard(
-                    url,
-                    "Job URL copied to clipboard.",
-                  );
-                }
-              },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _jobMatchSearchController,
+            onChanged: _handleJobMatchSearchChanged,
+            onSubmitted: (value) {
+              _jobMatchSearchDebounce?.cancel();
+              _searchJobMatches(search: value);
+            },
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText:
+                  "Search title, company, location, skills, or reasoning",
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: jobMatchSearch.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: _clearJobMatchSearch,
+                      icon: const Icon(Icons.close),
+                      tooltip: "Clear search",
+                    ),
+              filled: true,
+              fillColor: Colors.grey.shade50,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
-                vertical: 6,
+                vertical: 14,
               ),
-              leading: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.badge_outlined,
-                  color: Colors.white,
-                  size: 20,
-                ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade200),
               ),
-              title: Text(
-                match.job.title,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade200),
               ),
-              subtitle: Text(
-                "${match.job.company} • ${match.job.location}",
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  color: _scoreColor(match.matchScore).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  "${match.matchScore}%",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: _scoreColor(match.matchScore),
-                  ),
-                ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Colors.black87),
               ),
             ),
-          );
-        }).toList(),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            statusLabel,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (isLoadingJobMatches)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      activeSearch.isEmpty
+                          ? "Comparing this resume against the stored job listings."
+                          : 'Searching stored matches for "$activeSearch".',
+                      style: TextStyle(color: Colors.grey.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (jobMatches.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Text(
+                activeSearch.isEmpty
+                    ? "No job matches returned yet."
+                    : 'No stored job matches contain "$activeSearch".',
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+            )
+          else
+            Column(
+              children: jobMatches.map((match) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: ListTile(
+                    onTap: () {
+                      final url = match.job.jobUrl;
+                      if (url.isNotEmpty) {
+                        _copyToClipboard(
+                          url,
+                          "Job URL copied to clipboard.",
+                        );
+                      }
+                    },
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.badge_outlined,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      match.job.title,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    subtitle: Text(
+                      "${match.job.company} • ${match.job.location}",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _scoreColor(match.matchScore).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        "${match.matchScore}%",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: _scoreColor(match.matchScore),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
       ),
     );
   }

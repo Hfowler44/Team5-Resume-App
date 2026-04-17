@@ -610,6 +610,7 @@ function Dashboard({ session, onLogout }) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [deletingResumeId, setDeletingResumeId] = useState(null);
   const [highlightResumeId, setHighlightResumeId] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [detailRefresh, setDetailRefresh] = useState(0);
@@ -917,6 +918,7 @@ function Dashboard({ session, onLogout }) {
     ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`
     : "";
   const shouldHighlightAnalysis = highlightResumeId === selectedResumeId;
+  const deletingSelectedResume = deletingResumeId === selectedResumeId;
   const activeJobMatchSearch = loadingJobMatches
     ? normalizedJobMatchSearch
     : jobMatchesSearch;
@@ -983,6 +985,37 @@ function Dashboard({ session, onLogout }) {
       }
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleDeleteResume = async () => {
+    if (!selectedResumeId || !selectedResume) return;
+
+    const resumeIdToDelete = selectedResumeId;
+    const fileName = selectedResume.fileName;
+    const confirmed = window.confirm(
+      `Delete ${fileName}? This removes the stored PDF, version history, and analysis records.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingResumeId(resumeIdToDelete);
+    setDashboardError("");
+    setDashboardNotice("");
+    setHighlightResumeId(null);
+
+    try {
+      await api.deleteResume(token, resumeIdToDelete);
+      setDashboardNotice(`Deleted ${fileName}.`);
+      await loadResumes();
+    } catch (error) {
+      if (!handleAuthFailure(error)) {
+        setDashboardError(error.message);
+      }
+    } finally {
+      setDeletingResumeId(null);
     }
   };
 
@@ -1150,10 +1183,21 @@ function Dashboard({ session, onLogout }) {
             {selectedResume ? (
               <>
                 <div className="summary-head">
-                  <strong>{selectedResume.fileName}</strong>
-                  <span className={`status-pill ${selectedResume.status}`}>
-                    {selectedResume.status}
-                  </span>
+                  <div className="summary-head-copy">
+                    <strong>{selectedResume.fileName}</strong>
+                    <span className={`status-pill ${selectedResume.status}`}>
+                      {selectedResume.status}
+                    </span>
+                  </div>
+
+                  <button
+                    className="danger-button summary-delete-button"
+                    type="button"
+                    onClick={handleDeleteResume}
+                    disabled={loadingDetail || deletingSelectedResume}
+                  >
+                    {deletingSelectedResume ? "Delete resume..." : "Delete resume"}
+                  </button>
                 </div>
 
                 <div className="briefing-grid">

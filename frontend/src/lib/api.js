@@ -183,6 +183,12 @@ export const api = {
       body: formData,
     });
   },
+  deleteResume(token, resumeId) {
+    return request(`/resumes/${resumeId}`, {
+      method: "DELETE",
+      headers: authHeaders(token, jsonHeaders),
+    });
+  },
   analyzeResume(token, resumeId) {
     return request(`/resumes/${resumeId}/analyze`, {
       method: "POST",

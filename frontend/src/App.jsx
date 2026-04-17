@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api";
 import knightMark from "./assets/knight-mark.svg";
 
@@ -615,7 +615,9 @@ function Dashboard({ session, onLogout }) {
   const [detailRefresh, setDetailRefresh] = useState(0);
   const [reviewTab, setReviewTab] = useState("suggestions");
   const [jobMatches, setJobMatches] = useState([]);
+  const [jobMatchSearch, setJobMatchSearch] = useState("");
   const [jobMatchesResumeId, setJobMatchesResumeId] = useState(null);
+  const [jobMatchesSearch, setJobMatchesSearch] = useState("");
   const [loadingJobMatches, setLoadingJobMatches] = useState(false);
   const [jobMatchPhase, setJobMatchPhase] = useState("idle");
   const fileInputRef = useRef(null);
@@ -623,6 +625,8 @@ function Dashboard({ session, onLogout }) {
   const suggestionsRef = useRef(null);
   const jobMatchRequestRef = useRef(0);
   const token = session.token;
+  const deferredJobMatchSearch = useDeferredValue(jobMatchSearch);
+  const normalizedJobMatchSearch = deferredJobMatchSearch.trim();
 
   const replacePreview = (nextUrl) => {
     if (previewRef.current) {
@@ -644,6 +648,7 @@ function Dashboard({ session, onLogout }) {
   useEffect(() => {
     setJobMatches([]);
     setJobMatchesResumeId(null);
+    setJobMatchesSearch("");
     setLoadingJobMatches(false);
     setJobMatchPhase("idle");
     jobMatchRequestRef.current += 1;
@@ -660,10 +665,18 @@ function Dashboard({ session, onLogout }) {
 
   const loadJobMatches = async (
     resumeId,
-    { force = false, resync = false } = {}
+    { force = false, resync = false, search = "", mode = "stored" } = {}
   ) => {
+    const normalizedSearch = String(search || "").trim();
+
     if (!resumeId) return;
-    if (!force && jobMatchesResumeId === resumeId) return;
+    if (
+      !force &&
+      jobMatchesResumeId === resumeId &&
+      jobMatchesSearch === normalizedSearch
+    ) {
+      return;
+    }
 
     const requestId = jobMatchRequestRef.current + 1;
     jobMatchRequestRef.current = requestId;
@@ -679,12 +692,16 @@ function Dashboard({ session, onLogout }) {
         if (jobMatchRequestRef.current !== requestId) return;
       }
 
-      const matches = await api.matchJobs(token, resumeId);
+      const matches =
+        mode === "match" || resync
+          ? await api.matchJobs(token, resumeId, { search: normalizedSearch })
+          : await api.getJobMatches(token, resumeId, { search: normalizedSearch });
 
       if (jobMatchRequestRef.current !== requestId) return;
 
       setJobMatches(matches);
       setJobMatchesResumeId(resumeId);
+      setJobMatchesSearch(normalizedSearch);
     } catch (error) {
       if (jobMatchRequestRef.current !== requestId) return;
 
@@ -801,12 +818,31 @@ function Dashboard({ session, onLogout }) {
       return;
     }
 
-    if (jobMatchesResumeId === selectedResumeId) {
+    if (jobMatchesResumeId !== selectedResumeId) {
+      loadJobMatches(selectedResumeId, {
+        mode: "match",
+        search: normalizedJobMatchSearch,
+      });
       return;
     }
 
-    loadJobMatches(selectedResumeId);
-  }, [jobMatchesResumeId, reviewTab, selectedResumeId, token]);
+    if (jobMatchesSearch === normalizedJobMatchSearch) {
+      return;
+    }
+
+    loadJobMatches(selectedResumeId, {
+      force: true,
+      mode: "stored",
+      search: normalizedJobMatchSearch,
+    });
+  }, [
+    jobMatchesResumeId,
+    jobMatchesSearch,
+    normalizedJobMatchSearch,
+    reviewTab,
+    selectedResumeId,
+    token,
+  ]);
 
   const activeAnalysis = useMemo(
     () =>
@@ -881,6 +917,9 @@ function Dashboard({ session, onLogout }) {
     ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`
     : "";
   const shouldHighlightAnalysis = highlightResumeId === selectedResumeId;
+  const activeJobMatchSearch = loadingJobMatches
+    ? normalizedJobMatchSearch
+    : jobMatchesSearch;
 
   const handleUpload = async (event) => {
     event.preventDefault();
@@ -1215,10 +1254,18 @@ function Dashboard({ session, onLogout }) {
                           : loadingJobMatches
                             ? jobMatchPhase === "syncing"
                               ? "Syncing listings and refreshing matches..."
-                              : "Finding matching roles..."
+                              : activeJobMatchSearch
+                                ? `Searching matches for "${activeJobMatchSearch}"...`
+                                : "Finding matching roles..."
                             : jobMatches.length > 0
-                              ? `${jobMatches.length} roles found`
-                              : "No matches yet"}
+                              ? `${jobMatches.length} roles found${
+                                  activeJobMatchSearch
+                                    ? ` for "${activeJobMatchSearch}"`
+                                    : ""
+                                }`
+                              : activeJobMatchSearch
+                                ? `No roles match "${activeJobMatchSearch}"`
+                                : "No matches yet"}
                     </span>
                   </div>
 
@@ -1230,6 +1277,8 @@ function Dashboard({ session, onLogout }) {
                         loadJobMatches(selectedResumeId, {
                           force: true,
                           resync: true,
+                          mode: "match",
+                          search: normalizedJobMatchSearch,
                         })
                       }
                       disabled={loadingJobMatches}
@@ -1259,6 +1308,31 @@ function Dashboard({ session, onLogout }) {
                     Job matches
                   </button>
                 </div>
+
+                {reviewTab === "jobs" ? (
+                  <div className="job-search-row">
+                    <label className="field job-search-field">
+                      <span>Search matched jobs</span>
+                      <input
+                        type="search"
+                        placeholder="Search title, company, location, skills, or reasoning"
+                        value={jobMatchSearch}
+                        onChange={(event) => setJobMatchSearch(event.target.value)}
+                        disabled={!selectedResumeId}
+                      />
+                    </label>
+
+                    {jobMatchSearch ? (
+                      <button
+                        className="ghost-button job-search-clear"
+                        type="button"
+                        onClick={() => setJobMatchSearch("")}
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {reviewTab === "suggestions" ? (
                   <>
@@ -1366,6 +1440,7 @@ function Dashboard({ session, onLogout }) {
                     jobMatches={jobMatches}
                     jobMatchPhase={jobMatchPhase}
                     loadingJobMatches={loadingJobMatches}
+                    searchQuery={activeJobMatchSearch}
                   />
                 )}
               </div>
@@ -1442,6 +1517,7 @@ function JobMatchesPanel({
   jobMatches,
   jobMatchPhase,
   loadingJobMatches,
+  searchQuery,
 }) {
   if (!hasSelectedResume) {
     return (
@@ -1458,12 +1534,16 @@ function JobMatchesPanel({
         body={
           jobMatchPhase === "syncing"
             ? "Refreshing the job feed, then recomputing the best matches for this resume."
-            : "Comparing this resume against the jobs already synced into the app."
+            : searchQuery
+              ? `Searching the stored matches for "${searchQuery}".`
+              : "Comparing this resume against the jobs already synced into the app."
         }
         title={
           jobMatchPhase === "syncing"
             ? "Syncing jobs and finding matches..."
-            : "Finding matching roles..."
+            : searchQuery
+              ? "Searching matched roles..."
+              : "Finding matching roles..."
         }
       />
     );
@@ -1472,8 +1552,16 @@ function JobMatchesPanel({
   if (jobMatches.length === 0) {
     return (
       <EmptyState
-        body="No roles cleared the current match threshold for this resume."
-        title="No job matches found yet."
+        body={
+          searchQuery
+            ? `No stored job matches contain "${searchQuery}". Try a broader term or refresh the jobs feed.`
+            : "No roles cleared the current match threshold for this resume."
+        }
+        title={
+          searchQuery
+            ? "No job matches found for this search."
+            : "No job matches found yet."
+        }
       />
     );
   }

@@ -51,6 +51,22 @@ const authHeaders = (token, extraHeaders = {}) => ({
   Authorization: `Bearer ${token}`,
 });
 
+const buildQueryString = (params = {}) => {
+  const query = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+
+    const normalized = String(value).trim();
+    if (!normalized) return;
+
+    query.set(key, normalized);
+  });
+
+  const serialized = query.toString();
+  return serialized ? `?${serialized}` : "";
+};
+
 export const api = {
   register(payload) {
     return request("/auth/register", {
@@ -181,8 +197,17 @@ export const api = {
       headers: authHeaders(token, jsonHeaders),
     });
   },
-  matchJobs(token, resumeId) {
-    return request(`/jobs/match/${resumeId}`, {
+  getJobMatches(token, resumeId, options = {}) {
+    const query = buildQueryString({ search: options.search });
+
+    return request(`/jobs/match/${resumeId}${query}`, {
+      headers: authHeaders(token, jsonHeaders),
+    });
+  },
+  matchJobs(token, resumeId, options = {}) {
+    const query = buildQueryString({ search: options.search });
+
+    return request(`/jobs/match/${resumeId}${query}`, {
       method: "POST",
       headers: authHeaders(token, jsonHeaders),
     });
